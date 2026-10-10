@@ -1,0 +1,6 @@
+{
+  "name": "Tedoki Mixtape",
+  "description": "Authentisches Retro-Radiokassettendeck mit Radio Browser API, Mixtape-Aufnahme und virtuellem Kassettenregal.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
