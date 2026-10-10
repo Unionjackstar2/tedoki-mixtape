@@ -177,46 +177,6 @@ fun DigitalRadioPanel(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Left preset arrow [<]
-                Box(
-                    modifier = Modifier
-                        .size(32.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(if (isDimmed) Color(0xFF121418) else Color(0xFF1E2127))
-                        .border(1.dp, if (isDimmed) Color(0xFF22262E) else Color(0xFF383C45), RoundedCornerShape(4.dp))
-                        .clickable(enabled = !isDimmed) { onPreviousStation() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.ChevronLeft,
-                        contentDescription = "Vorheriger Sender",
-                        tint = if (isDimmed) Color(0xFF37474F) else Color(0xFFB0BEC5),
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(4.dp))
-
-                // Right preset arrow [>]
-                Box(
-                    modifier = Modifier
-                        .size(32.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(if (isDimmed) Color(0xFF121418) else Color(0xFF1E2127))
-                        .border(1.dp, if (isDimmed) Color(0xFF22262E) else Color(0xFF383C45), RoundedCornerShape(4.dp))
-                        .clickable(enabled = !isDimmed) { onNextStation() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.ChevronRight,
-                        contentDescription = "Nächster Sender",
-                        tint = if (isDimmed) Color(0xFF37474F) else Color(0xFFB0BEC5),
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(6.dp))
-
                 // Middle: Station Logo badge + Name & Song info
                 Row(
                     modifier = Modifier
@@ -229,12 +189,12 @@ fun DigitalRadioPanel(
                     StationLogoView(
                         station = station,
                         modifier = Modifier
-                            .size(width = 44.dp, height = 30.dp)
+                            .size(width = 46.dp, height = 32.dp)
                             .alpha(displayAlpha),
                         fallbackTextSize = 10.sp
                     )
 
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(10.dp))
 
                     Column(
                         modifier = Modifier
@@ -263,41 +223,11 @@ fun DigitalRadioPanel(
                     }
                 }
 
-                // Radio Play / Stop button
-                IconButton(
-                    onClick = onToggleRadioPlayback,
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (isDimmed) Color(0xFF1E2127)
-                            else if (isRadioPlaying) Color(0xFF2E7D32)
-                            else Color(0xFFE65100)
-                        )
-                        .border(
-                            width = 1.dp,
-                            color = if (isDimmed) Color(0xFF383C45)
-                            else if (isRadioPlaying) Color(0xFF81C784)
-                            else Color(0xFFFFB74D),
-                            shape = CircleShape
-                        )
-                        .testTag("radio_play_stop_button")
-                ) {
-                    Icon(
-                        imageVector = if (isRadioPlaying) Icons.Default.Stop else Icons.Default.PlayArrow,
-                        contentDescription = if (isRadioPlaying) "Radio anhalten" else "Radio wiedergeben",
-                        tint = if (isDimmed) Color(0xFF90A4AE) else Color.White,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(4.dp))
-
                 // Favorite star button
                 IconButton(
                     onClick = onToggleFavorite,
                     enabled = !isDimmed,
-                    modifier = Modifier.size(32.dp)
+                    modifier = Modifier.size(34.dp)
                 ) {
                     Icon(
                         imageVector = if (isFavorite) Icons.Default.Star else Icons.Outlined.StarBorder,
@@ -309,7 +239,7 @@ fun DigitalRadioPanel(
                         } else {
                             Color(0xFF78909C)
                         },
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(20.dp)
                     )
                 }
 

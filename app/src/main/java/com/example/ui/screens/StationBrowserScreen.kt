@@ -58,9 +58,18 @@ import com.example.ui.components.StationLogoView
 import com.example.ui.theme.DeckSurfaceDark
 import com.example.ui.theme.ShareTechMonoFontFamily
 
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.foundation.shape.CircleShape
+import com.example.ui.theme.DigitalLcdText
+import com.example.ui.theme.DigitalLcdSubtext
+
 @Composable
 fun StationBrowserScreen(
     currentStation: RadioStation?,
+    isRadioPlaying: Boolean = false,
+    nowPlayingText: String = "",
+    onTogglePlayback: () -> Unit = {},
     onStationSelect: (RadioStation) -> Unit,
     onBack: () -> Unit
 ) {
@@ -101,7 +110,7 @@ fun StationBrowserScreen(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 12.dp),
+                .padding(horizontal = 8.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBack) {
@@ -134,6 +143,90 @@ fun StationBrowserScreen(
                     contentDescription = "Suche",
                     tint = Color.White
                 )
+            }
+        }
+
+        // Top Now-Playing Banner: Current station with Play / Stop button
+        if (currentStation != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color(0xFF14171D))
+                    .border(1.dp, if (isRadioPlaying) Color(0xFF2E7D32) else Color(0xFF2E333D), RoundedCornerShape(10.dp))
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Logo
+                    StationLogoView(
+                        station = currentStation,
+                        modifier = Modifier.size(width = 46.dp, height = 34.dp),
+                        cornerRadius = 5.dp,
+                        fallbackTextSize = 10.sp
+                    )
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    // Station Name & Now playing
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "AKTUELL:",
+                                fontSize = 9.sp,
+                                fontFamily = ShareTechMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isRadioPlaying) Color(0xFF81C784) else Color(0xFF90A4AE),
+                                letterSpacing = 1.sp
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = if (isRadioPlaying) "● WIEDERGABE" else "○ ANGEHALTEN",
+                                fontSize = 9.sp,
+                                fontFamily = ShareTechMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isRadioPlaying) Color(0xFF81C784) else Color(0xFFE65100)
+                            )
+                        }
+                        Text(
+                            text = currentStation.name,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = if (nowPlayingText.isNotBlank()) nowPlayingText else (currentStation.slogan.ifBlank { "Live Radio" }),
+                            fontSize = 11.sp,
+                            color = Color(0xFFB0BEC5),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    // Play / Stop Button
+                    IconButton(
+                        onClick = onTogglePlayback,
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(CircleShape)
+                            .background(if (isRadioPlaying) Color(0xFF2E7D32) else Color(0xFFE65100))
+                            .border(1.dp, if (isRadioPlaying) Color(0xFF81C784) else Color(0xFFFFB74D), CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = if (isRadioPlaying) Icons.Default.Stop else Icons.Default.PlayArrow,
+                            contentDescription = if (isRadioPlaying) "Radio anhalten" else "Radio starten",
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
             }
         }
 

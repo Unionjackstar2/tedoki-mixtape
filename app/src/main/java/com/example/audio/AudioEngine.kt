@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import okhttp3.Call
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -81,6 +82,9 @@ class AudioEngine(private val context: Context) {
     private val _isRadioPlaying = MutableStateFlow(false)
     val isRadioPlaying: StateFlow<Boolean> = _isRadioPlaying.asStateFlow()
 
+    private val _isTapeAudioPlaying = MutableStateFlow(false)
+    val isTapeAudioPlaying: StateFlow<Boolean> = _isTapeAudioPlaying.asStateFlow()
+
     private val _deckState = MutableStateFlow(DeckState.STOPPED)
     val deckState: StateFlow<DeckState> = _deckState.asStateFlow()
 
@@ -120,6 +124,7 @@ class AudioEngine(private val context: Context) {
 
     // Recording state
     private var recordingFile: File? = null
+    private var recordingCall: Call? = null
     private var recordStartTime = 0L
     private var recordingInitialPos = 0
     private var tapePlayStartTime = 0L
@@ -313,8 +318,13 @@ class AudioEngine(private val context: Context) {
             // Tape player
             tapePlayer = createPlayer().apply {
                 addListener(object : Player.Listener {
+                    override fun onIsPlayingChanged(isPlaying: Boolean) {
+                        _isTapeAudioPlaying.value = isPlaying
+                    }
+
                     override fun onPlaybackStateChanged(playbackState: Int) {
                         if (playbackState == Player.STATE_ENDED) {
+                            _isTapeAudioPlaying.value = false
                             if (_playbackSource.value == PlaybackSource.TAPE) {
                                 val endPos = getTapeEndPositionSec()
                                 _tapePositionSec.value = endPos
@@ -326,7 +336,11 @@ class AudioEngine(private val context: Context) {
                     }
 
                     override fun onPlayerError(error: PlaybackException) {
-                        // Keep state stable
+                        Log.e("AudioEngine", "Tape player playback error: ${error.errorCodeName} (${error.errorCode})", error)
+                        _deckState.value = DeckState.STOPPED
+                        _isTapeAudioPlaying.value = false
+                        _nowPlayingTitle.value = "Wiedergabefehler (${error.errorCodeName})"
+                        safeStopPlaybackService()
                     }
                 })
             }
@@ -342,8 +356,11 @@ class AudioEngine(private val context: Context) {
             var needleStep = 0.0
             while (isActive) {
                 delay(8) // ~120Hz update loop (every 8.3ms)
-                val isAudioActivelyPlaying = (_isRadioPlaying.value && radioPlayer?.isPlaying == true) ||
-                        (_deckState.value == DeckState.PLAYING && _playbackSource.value == PlaybackSource.TAPE && tapePlayer?.isPlaying == true)
+                val isRadioAudio = _playbackSource.value == PlaybackSource.RADIO && _isRadioPlaying.value
+                val isTapeAudio = _playbackSource.value == PlaybackSource.TAPE &&
+                        _deckState.value == DeckState.PLAYING &&
+                        _isTapeAudioPlaying.value
+                val isAudioActivelyPlaying = isRadioAudio || isTapeAudio
 
                 if (isAudioActivelyPlaying) {
                     peakLeft *= 0.94
@@ -441,9 +458,7 @@ class AudioEngine(private val context: Context) {
             }
             recordArmTimeoutJob?.cancel()
             recordArmTimeoutJob = null
-            if (_deckState.value == DeckState.RECORD_ARMED) {
-                _deckState.value = DeckState.STOPPED
-            }
+            _deckState.value = DeckState.STOPPED
 
             // 2. Shut off the radio completely!
             stopRadio()
@@ -576,11 +591,21 @@ class AudioEngine(private val context: Context) {
         stopSpooling()
 
         if (_deckState.value == DeckState.PAUSED) {
+            val tape = _activeTape.value
+            if (tape != null && tape.filePath.isNotBlank()) {
+                val file = File(tape.filePath)
+                if (!file.exists() || file.length() == 0L) {
+                    Log.e("AudioEngine", "Cannot resume tape playback: audio file missing or empty (${tape.filePath})")
+                    _deckState.value = DeckState.STOPPED
+                    _isTapeAudioPlaying.value = false
+                    _nowPlayingTitle.value = "Audiodatei nicht gefunden"
+                    return null
+                }
+            }
             _deckState.value = DeckState.PLAYING
             tapePlayStartTime = System.currentTimeMillis()
             tapePlayStartPos = _tapePositionSec.value
             tapePlayer?.play()
-            val tape = _activeTape.value
             safeStartPlaybackService(tape?.title ?: "Kassette", tape?.sideA ?: "Wiedergabe", true)
             return null
         }
@@ -593,9 +618,6 @@ class AudioEngine(private val context: Context) {
     }
 
     private fun playTape(tape: Cassette) {
-        _deckState.value = DeckState.PLAYING
-        _nowPlayingTitle.value = "${tape.title} (${tape.sideA})"
-
         val maxCap = getTapeEndPositionSec()
         if (_tapePositionSec.value >= maxCap) {
             _tapePositionSec.value = 0
@@ -605,8 +627,18 @@ class AudioEngine(private val context: Context) {
         tapePlayStartTime = System.currentTimeMillis()
         tapePlayStartPos = _tapePositionSec.value
 
-        val file = File(tape.filePath)
-        if (file.exists() && file.length() > 0) {
+        if (tape.filePath.isNotBlank()) {
+            val file = File(tape.filePath)
+            if (!file.exists() || file.length() == 0L) {
+                Log.e("AudioEngine", "Tape audio file missing or empty: ${tape.filePath}")
+                _deckState.value = DeckState.STOPPED
+                _isTapeAudioPlaying.value = false
+                _nowPlayingTitle.value = "Audiodatei nicht gefunden"
+                tapePlayer?.stop()
+                tapePlayer?.clearMediaItems()
+                return
+            }
+
             try {
                 tapePlayer?.let { player ->
                     player.stop()
@@ -617,8 +649,14 @@ class AudioEngine(private val context: Context) {
                     player.prepare()
                     player.play()
                 }
+                _deckState.value = DeckState.PLAYING
+                _nowPlayingTitle.value = "${tape.title} (${tape.sideA})"
+                safeStartPlaybackService(tape.title, tape.sideA, true)
             } catch (e: Exception) {
-                // fall back to motor progression
+                Log.e("AudioEngine", "Error initializing tape file playback: ${tape.filePath}", e)
+                _deckState.value = DeckState.STOPPED
+                _isTapeAudioPlaying.value = false
+                _nowPlayingTitle.value = "Wiedergabefehler"
             }
         } else if (tape.isSample) {
             try {
@@ -630,15 +668,24 @@ class AudioEngine(private val context: Context) {
                     player.prepare()
                     player.play()
                 }
+                _deckState.value = DeckState.PLAYING
+                _nowPlayingTitle.value = "${tape.title} (${tape.sideA})"
+                safeStartPlaybackService(tape.title, tape.sideA, true)
             } catch (e: Exception) {
-                // ignore
+                Log.e("AudioEngine", "Error playing sample tape", e)
+                _deckState.value = DeckState.STOPPED
+                _isTapeAudioPlaying.value = false
+                _nowPlayingTitle.value = "Wiedergabefehler"
             }
         } else {
             // Blank / unrecorded tape: runs motor silently
             tapePlayer?.stop()
             tapePlayer?.clearMediaItems()
+            _isTapeAudioPlaying.value = false
+            _deckState.value = DeckState.PLAYING
+            _nowPlayingTitle.value = "${tape.title} (Leerband)"
+            safeStartPlaybackService(tape.title, "Leerband läuft", true)
         }
-        safeStartPlaybackService(tape.title, tape.sideA, true)
     }
 
     fun onPausePress() {
@@ -656,6 +703,7 @@ class AudioEngine(private val context: Context) {
             }
             DeckState.PLAYING -> {
                 tapePlayer?.pause()
+                _isTapeAudioPlaying.value = false
                 _deckState.value = DeckState.PAUSED
                 val tape = _activeTape.value
                 safeStartPlaybackService(tape?.title ?: "Kassette", "Pausiert", false)
@@ -714,6 +762,7 @@ class AudioEngine(private val context: Context) {
             _deckState.value == DeckState.REWINDING) {
             stopSpooling()
             tapePlayer?.pause()
+            _isTapeAudioPlaying.value = false
             _deckState.value = DeckState.STOPPED
             stopPressedOnce = true
             safeStopPlaybackService()
@@ -784,7 +833,7 @@ class AudioEngine(private val context: Context) {
         // Capture initial track marker
         val tapeId = tape.id
         val currentTitle = _nowPlayingTitle.value
-        if (currentTitle.isNotBlank() && currentTitle != "Radio bereit") {
+        if (currentTitle.isNotBlank() && currentTitle != "Radio bereit" && !currentTitle.startsWith("Lade ")) {
             val parts = currentTitle.split(" - ", limit = 2)
             val artist = if (parts.size > 1) parts[0].trim() else currentSt.name
             val title = if (parts.size > 1) parts[1].trim() else currentTitle
@@ -800,31 +849,48 @@ class AudioEngine(private val context: Context) {
         }
 
         // Ensure radio stream is playing through speakers
-        if (!_isRadioPlaying.value || radioPlayer?.isPlaying != true) {
+        if (!_isRadioPlaying.value) {
             playRadio(currentSt)
         }
 
-        // Record real radio audio stream directly to MP3 file in background (append if continuing existing tape position)
+        // 1. SYNCHRONOUSLY set destination file path BEFORE starting IO job
+        val recordingsDir = File(context.filesDir, "recordings")
+        if (!recordingsDir.exists()) recordingsDir.mkdirs()
+
+        val targetFile = if (tape.filePath.isNotBlank()) {
+            File(tape.filePath)
+        } else {
+            File(recordingsDir, "$tapeId.mp3")
+        }
+        recordingFile = targetFile
+
+        // Append if continuing existing recorded tape segments
+        val shouldAppend = targetFile.exists() && targetFile.length() > 0
+
+        // 2. Explicitly cancel any previous recording call/job
+        try {
+            recordingCall?.cancel()
+        } catch (e: Exception) {
+            // non-fatal
+        }
+        recordingCall = null
         recordingJob?.cancel()
+
+        val request = Request.Builder()
+            .url(currentSt.streamUrl)
+            .header("User-Agent", "TedokiMixtape/1.0 (Android; Recording)")
+            .build()
+
+        val call = okHttpClient.newCall(request)
+        recordingCall = call
+
         recordingJob = scope.launch(Dispatchers.IO) {
             try {
-                val recordingsDir = File(context.filesDir, "recordings")
-                if (!recordingsDir.exists()) recordingsDir.mkdirs()
-
-                val file = File(recordingsDir, "$tapeId.mp3")
-                recordingFile = file
-
-                val request = Request.Builder()
-                    .url(currentSt.streamUrl)
-                    .header("User-Agent", "TedokiMixtape/1.0 (Android; Recording)")
-                    .build()
-
-                okHttpClient.newCall(request).execute().use { response ->
+                call.execute().use { response ->
                     if (response.isSuccessful) {
                         val stream = response.body?.byteStream()
                         if (stream != null) {
-                            val shouldAppend = recordingInitialPos > 0 && file.exists() && file.length() > 0
-                            FileOutputStream(file, shouldAppend).use { fos ->
+                            FileOutputStream(targetFile, shouldAppend).use { fos ->
                                 val buffer = ByteArray(8192)
                                 var read: Int
                                 while (isActive && _deckState.value == DeckState.RECORDING) {
@@ -838,17 +904,29 @@ class AudioEngine(private val context: Context) {
                     }
                 }
             } catch (e: Exception) {
-                // Recording handling
+                // Expected on cancellation or stream closure
             }
         }
     }
 
     private fun stopRecording(): RecordingResult? {
+        val currentTape = _activeTape.value ?: return null
+        val targetFile = recordingFile
+
+        // 1. Explicitly cancel OkHttp call to immediately unblock and close stream
+        try {
+            recordingCall?.cancel()
+        } catch (e: Exception) {
+            // non-fatal
+        }
+        recordingCall = null
+
         recordingJob?.cancel()
         recordingJob = null
 
+        _deckState.value = DeckState.STOPPED
+
         val elapsedSec = ((System.currentTimeMillis() - recordStartTime) / 1000).toInt().coerceAtLeast(1)
-        val currentTape = _activeTape.value ?: return null
         val tapeId = currentTape.id
         val finalEndSec = (recordingInitialPos + elapsedSec).coerceAtMost(currentTape.totalCapacitySec)
 
@@ -879,9 +957,15 @@ class AudioEngine(private val context: Context) {
 
         val totalDuration = maxOf(currentTape.durationSec, finalEndSec)
 
+        val finalPath = if (targetFile != null && targetFile.exists() && targetFile.length() > 0) {
+            targetFile.absolutePath
+        } else {
+            currentTape.filePath
+        }
+
         val finalizedTape = currentTape.copy(
             durationSec = totalDuration,
-            filePath = recordingFile?.absolutePath ?: currentTape.filePath,
+            filePath = finalPath,
             radioStationName = _currentStation.value?.name ?: "1LIVE",
             trackCount = finalTrackCount.coerceAtLeast(1),
             currentPositionSec = finalEndSec
@@ -1001,6 +1085,28 @@ class AudioEngine(private val context: Context) {
     fun getTapeEndPositionSec(): Int {
         val tape = _activeTape.value ?: return 3600
         return if (tape.durationSec > 0) tape.durationSec else tape.totalCapacitySec
+    }
+
+    /**
+     * Explicit stop method for media service / notification / audio output stops.
+     * Stops currently active audio playback (radio or tape) cleanly WITHOUT
+     * triggering mechanical cassette STOP/EJECT two-stage logic or ejecting the tape.
+     */
+    fun stopActiveAudioPlayback() {
+        if (_playbackSource.value == PlaybackSource.RADIO) {
+            stopRadio()
+        } else if (_playbackSource.value == PlaybackSource.TAPE) {
+            if (_deckState.value == DeckState.PLAYING ||
+                _deckState.value == DeckState.PAUSED ||
+                _deckState.value == DeckState.FAST_FORWARDING ||
+                _deckState.value == DeckState.REWINDING
+            ) {
+                stopSpooling()
+                tapePlayer?.pause()
+                _isTapeAudioPlaying.value = false
+                _deckState.value = DeckState.STOPPED
+            }
+        }
     }
 
     // Compatibility methods for existing callers

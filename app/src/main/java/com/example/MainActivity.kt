@@ -173,6 +173,9 @@ fun MixtapeApp(
             AppScreen.STATIONS -> {
                 StationBrowserScreen(
                     currentStation = audioEngine.currentStation.collectAsState().value,
+                    isRadioPlaying = audioEngine.isRadioPlaying.collectAsState().value,
+                    nowPlayingText = audioEngine.nowPlayingTitle.collectAsState().value,
+                    onTogglePlayback = { audioEngine.toggleRadioPlayback() },
                     onStationSelect = { selectedStation ->
                         audioEngine.playStation(selectedStation)
                         currentScreen = AppScreen.DECK

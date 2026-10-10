@@ -38,6 +38,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -101,11 +102,24 @@ fun CassetteDeckScreen(
     val favoriteUuids by favoritesManager.favoriteUuids.collectAsState()
     val isCurrentStationFavorite = currentStation?.let { favoriteUuids.contains(it.stationuuid) } ?: false
 
+    // Pool of selectable stations when radio is active: strictly favorites if any exist, fallback to curated
+    val activeStationPool = remember(favoriteUuids, stations) {
+        val favs = stations.filter { favoriteUuids.contains(it.stationuuid) }
+        if (favs.isNotEmpty()) favs else stations
+    }
+
     var showRecordingOptions by remember { mutableStateOf(false) }
     var recordingMode by remember { mutableStateOf(RecordingMode.CONTINUOUS) }
 
     // Dial frequency state
     var tunedFrequency by remember { mutableFloatStateOf(currentStation?.dialFrequencyMhz ?: 101.5f) }
+
+    // Synchronize needle when currentStation changes
+    LaunchedEffect(currentStation) {
+        currentStation?.dialFrequencyMhz?.let { freq ->
+            tunedFrequency = freq
+        }
+    }
 
     // Cassette ONLY spins during recording or during tape playback, or rewind/fast-forward!
     // When playing radio and NOT recording, the tape mechanism does not move.
@@ -327,18 +341,20 @@ fun CassetteDeckScreen(
                     val isTapeMode = playbackSource == PlaybackSource.TAPE
                     val isTapeRunning = isSpinning && isTapeMode
 
-                    // 2. Analog FM Tuning Scale
+                    // 2. Analog FM Tuning Scale: Swiping switches between favorite stations
                     TuningScale(
                         currentFrequencyMhz = tunedFrequency,
                         onFrequencyChange = { newFreq ->
                             tunedFrequency = newFreq
-                            // Find closest radio station
-                            val closest = stations.minByOrNull { kotlin.math.abs(it.dialFrequencyMhz - newFreq) }
+                            // Find closest station from active favorites pool
+                            val closest = activeStationPool.minByOrNull { kotlin.math.abs(it.dialFrequencyMhz - newFreq) }
                             closest?.let {
-                                if (playbackSource == PlaybackSource.RADIO) {
-                                    audioEngine.playStation(it)
-                                } else {
-                                    audioEngine.setStation(it)
+                                if (it.stationuuid != currentStation?.stationuuid) {
+                                    if (playbackSource == PlaybackSource.RADIO) {
+                                        audioEngine.playStation(it)
+                                    } else {
+                                        audioEngine.setStation(it)
+                                    }
                                 }
                             }
                         },
@@ -358,9 +374,9 @@ fun CassetteDeckScreen(
                             audioEngine.toggleRadioPlayback()
                         },
                         onPreviousStation = {
-                            val currentIndex = stations.indexOfFirst { it.stationuuid == currentStation?.stationuuid }
-                            val newIndex = if (currentIndex <= 0) stations.size - 1 else currentIndex - 1
-                            val newStation = stations[newIndex]
+                            val currentIndex = activeStationPool.indexOfFirst { it.stationuuid == currentStation?.stationuuid }
+                            val newIndex = if (currentIndex <= 0) activeStationPool.size - 1 else currentIndex - 1
+                            val newStation = activeStationPool[newIndex]
                             tunedFrequency = newStation.dialFrequencyMhz
                             if (playbackSource == PlaybackSource.RADIO) {
                                 audioEngine.playStation(newStation)
@@ -369,9 +385,9 @@ fun CassetteDeckScreen(
                             }
                         },
                         onNextStation = {
-                            val currentIndex = stations.indexOfFirst { it.stationuuid == currentStation?.stationuuid }
-                            val newIndex = if (currentIndex < 0 || currentIndex >= stations.size - 1) 0 else currentIndex + 1
-                            val newStation = stations[newIndex]
+                            val currentIndex = activeStationPool.indexOfFirst { it.stationuuid == currentStation?.stationuuid }
+                            val newIndex = if (currentIndex < 0 || currentIndex >= activeStationPool.size - 1) 0 else currentIndex + 1
+                            val newStation = activeStationPool[newIndex]
                             tunedFrequency = newStation.dialFrequencyMhz
                             if (playbackSource == PlaybackSource.RADIO) {
                                 audioEngine.playStation(newStation)
@@ -392,15 +408,19 @@ fun CassetteDeckScreen(
                             }
                         },
                         onRotateKnob = { delta ->
-                            val newFreq = (tunedFrequency + delta * 0.05f).coerceIn(88.0f, 108.0f)
-                            tunedFrequency = newFreq
-                            val closest = stations.minByOrNull { kotlin.math.abs(it.dialFrequencyMhz - newFreq) }
-                            closest?.let {
-                                if (playbackSource == PlaybackSource.RADIO) {
-                                    audioEngine.playStation(it)
-                                } else {
-                                    audioEngine.setStation(it)
-                                }
+                            val currentIndex = activeStationPool.indexOfFirst { it.stationuuid == currentStation?.stationuuid }
+                            val safeCurrentIndex = if (currentIndex >= 0) currentIndex else 0
+                            val newIndex = if (delta > 0) {
+                                (safeCurrentIndex + 1) % activeStationPool.size
+                            } else {
+                                if (safeCurrentIndex <= 0) activeStationPool.size - 1 else safeCurrentIndex - 1
+                            }
+                            val newStation = activeStationPool[newIndex]
+                            tunedFrequency = newStation.dialFrequencyMhz
+                            if (playbackSource == PlaybackSource.RADIO) {
+                                audioEngine.playStation(newStation)
+                            } else {
+                                audioEngine.setStation(newStation)
                             }
                         }
                     )

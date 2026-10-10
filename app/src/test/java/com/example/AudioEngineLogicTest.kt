@@ -212,4 +212,59 @@ class AudioEngineLogicTest {
         assertEquals(PlaybackSource.RADIO, audioEngine.playbackSource.value)
         assertTrue(audioEngine.isRadioPlaying.value)
     }
+
+    @Test
+    fun testServiceStopDoesNotEjectTapeOrTriggerTwoStageEject() {
+        // Cassette is playing in TAPE mode
+        audioEngine.setPlaybackSource(PlaybackSource.TAPE)
+        audioEngine.insertTape(testTape)
+        audioEngine.onPlayPress()
+        assertEquals(DeckState.PLAYING, audioEngine.deckState.value)
+
+        // Notification/Service Stop occurs
+        audioEngine.stopActiveAudioPlayback()
+        assertEquals(DeckState.STOPPED, audioEngine.deckState.value)
+        assertNotNull(audioEngine.activeTape.value)
+        assertNotEquals(DeckState.EJECTED, audioEngine.deckState.value)
+
+        // After service stop, mechanical STOP/EJECT should still require two presses to eject
+        audioEngine.onStopEjectPress() // 1st press: confirms stopped state
+        assertEquals(DeckState.STOPPED, audioEngine.deckState.value)
+        audioEngine.onStopEjectPress() // 2nd press: ejects tape
+        assertEquals(DeckState.EJECTED, audioEngine.deckState.value)
+    }
+
+    @Test
+    fun testMissingAudioFileDoesNotPlayOrKeepPlayingState() {
+        val nonExistentTape = Cassette(
+            id = "tape_missing_file",
+            title = "Missing Audio Tape",
+            filePath = "/data/user/0/com.example/non_existent_audio.mp3",
+            durationSec = 180
+        )
+        audioEngine.setPlaybackSource(PlaybackSource.TAPE)
+        audioEngine.insertTape(nonExistentTape)
+        assertEquals(DeckState.STOPPED, audioEngine.deckState.value)
+
+        // Trying to play a tape with non-existent audio file must NOT enter or stay in PLAYING
+        audioEngine.onPlayPress()
+        assertEquals(DeckState.STOPPED, audioEngine.deckState.value)
+        assertEquals("Audiodatei nicht gefunden", audioEngine.nowPlayingTitle.value)
+    }
+
+    @Test
+    fun testSwitchingFromRadioToTapeWhileRecordingStopsCleanly() {
+        audioEngine.setPlaybackSource(PlaybackSource.RADIO)
+        audioEngine.insertTape(testTape)
+        audioEngine.onRecordPress()
+        audioEngine.onPlayPress()
+        assertEquals(DeckState.RECORDING, audioEngine.deckState.value)
+
+        // Switching to TAPE must finalize recording and set deck state to STOPPED
+        val result = audioEngine.setPlaybackSource(PlaybackSource.TAPE)
+        assertEquals(PlaybackSource.TAPE, audioEngine.playbackSource.value)
+        assertFalse(audioEngine.isRadioPlaying.value)
+        assertEquals(DeckState.STOPPED, audioEngine.deckState.value)
+        assertNotNull(result)
+    }
 }

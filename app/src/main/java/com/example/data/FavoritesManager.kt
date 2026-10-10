@@ -36,8 +36,9 @@ class FavoritesManager(context: Context) {
         } else {
             current.remove(uuid)
         }
-        prefs.edit().putStringSet(KEY_FAVORITES, current).apply()
-        _favoriteUuids.value = current.toSet()
+        val immutableCopy = HashSet(current)
+        prefs.edit().putStringSet(KEY_FAVORITES, immutableCopy).commit()
+        _favoriteUuids.value = immutableCopy
         return willBeFavorite
     }
 

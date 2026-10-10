@@ -142,7 +142,7 @@ class PlaybackService : Service() {
                 }
                 ACTION_STOP -> {
                     val engine = AudioEngine.instance
-                    engine?.stop()
+                    engine?.stopActiveAudioPlayback()
                     releaseWakeLock()
                     try {
                         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)

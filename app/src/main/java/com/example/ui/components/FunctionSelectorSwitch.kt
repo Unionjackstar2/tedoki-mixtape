@@ -98,14 +98,14 @@ fun FunctionSelectorSwitch(
             modifier = Modifier.padding(bottom = 2.dp)
         )
 
-        // Molded chassis panel for the switch
+        // Molded chassis panel for the switch (compact classic size)
         Box(
             modifier = Modifier
-                .width(132.dp)
-                .clip(RoundedCornerShape(6.dp))
+                .width(104.dp)
+                .clip(RoundedCornerShape(5.dp))
                 .background(Color(0xFF14161A))
-                .border(1.dp, Color(0xFF282C34), RoundedCornerShape(6.dp))
-                .padding(horizontal = 6.dp, vertical = 5.dp),
+                .border(1.dp, Color(0xFF282C34), RoundedCornerShape(5.dp))
+                .padding(horizontal = 4.dp, vertical = 4.dp),
             contentAlignment = Alignment.Center
         ) {
             Column(
@@ -116,9 +116,9 @@ fun FunctionSelectorSwitch(
                 BoxWithConstraints(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(28.dp)
-                        .shadow(elevation = 2.dp, shape = RoundedCornerShape(4.dp))
-                        .clip(RoundedCornerShape(4.dp))
+                        .height(22.dp)
+                        .shadow(elevation = 2.dp, shape = RoundedCornerShape(3.dp))
+                        .clip(RoundedCornerShape(3.dp))
                         .background(
                             Brush.verticalGradient(
                                 colors = listOf(
@@ -128,20 +128,20 @@ fun FunctionSelectorSwitch(
                                 )
                             )
                         )
-                        .border(1.dp, Color(0xFF2B2F38), RoundedCornerShape(4.dp))
-                        .padding(2.dp)
+                        .border(1.dp, Color(0xFF2B2F38), RoundedCornerShape(3.dp))
+                        .padding(1.5.dp)
                         .pointerInput(isRadio) {
                             detectHorizontalDragGestures { _, dragAmount ->
-                                if (dragAmount > 6f && !isRadio) {
+                                if (dragAmount > 5f && !isRadio) {
                                     switchTo(PlaybackSource.RADIO)
-                                } else if (dragAmount < -6f && isRadio) {
+                                } else if (dragAmount < -5f && isRadio) {
                                     switchTo(PlaybackSource.TAPE)
                                 }
                             }
                         }
                 ) {
                     val trackWidth = maxWidth
-                    val sliderWidth = 44.dp
+                    val sliderWidth = 34.dp
                     val maxOffset = (trackWidth - sliderWidth).coerceAtLeast(0.dp)
 
                     val animatedSliderOffset by animateDpAsState(
@@ -192,8 +192,8 @@ fun FunctionSelectorSwitch(
                             .offset(x = animatedSliderOffset)
                             .width(sliderWidth)
                             .fillMaxHeight()
-                            .shadow(elevation = 4.dp, shape = RoundedCornerShape(3.dp))
-                            .clip(RoundedCornerShape(3.dp))
+                            .shadow(elevation = 3.dp, shape = RoundedCornerShape(2.5.dp))
+                            .clip(RoundedCornerShape(2.5.dp))
                             .background(
                                 Brush.verticalGradient(
                                     colors = listOf(
@@ -203,7 +203,7 @@ fun FunctionSelectorSwitch(
                                     )
                                 )
                             )
-                            .border(1.dp, Color(0xFFF1F5F9), RoundedCornerShape(3.dp))
+                            .border(1.dp, Color(0xFFF1F5F9), RoundedCornerShape(2.5.dp))
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null
@@ -213,24 +213,24 @@ fun FunctionSelectorSwitch(
                     ) {
                         // Raised tactile ribbing on slider knob
                         Row(
-                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                            horizontalArrangement = Arrangement.spacedBy(1.5.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .width(2.dp)
+                                    .width(1.5.dp)
                                     .fillMaxHeight(0.65f)
                                     .background(Color(0xFF212529), RoundedCornerShape(1.dp))
                             )
                             Box(
                                 modifier = Modifier
-                                    .width(2.dp)
+                                    .width(1.5.dp)
                                     .fillMaxHeight(0.75f)
                                     .background(Color(0xFF16181B), RoundedCornerShape(1.dp))
                             )
                             Box(
                                 modifier = Modifier
-                                    .width(2.dp)
+                                    .width(1.5.dp)
                                     .fillMaxHeight(0.65f)
                                     .background(Color(0xFF212529), RoundedCornerShape(1.dp))
                             )
@@ -238,7 +238,7 @@ fun FunctionSelectorSwitch(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(5.dp))
+                Spacer(modifier = Modifier.height(3.dp))
 
                 // Labels below the track: TAPE / OFF  and  RADIO with glowing LEDs
                 Row(
@@ -249,20 +249,20 @@ fun FunctionSelectorSwitch(
                     // Left button: TAPE / OFF
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(3.dp),
                         modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
+                            .clip(RoundedCornerShape(3.dp))
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null
                             ) { switchTo(PlaybackSource.TAPE) }
-                            .padding(horizontal = 4.dp, vertical = 3.dp)
+                            .padding(horizontal = 2.dp, vertical = 2.dp)
                             .testTag("switch_label_tape")
                     ) {
                         // LED for Tape mode (Warm Amber when active)
                         Box(
                             modifier = Modifier
-                                .size(6.dp)
+                                .size(5.dp)
                                 .clip(CircleShape)
                                 .background(if (!isRadio) Color(0xFFFFB300) else Color(0xFF263238))
                                 .border(
@@ -272,8 +272,8 @@ fun FunctionSelectorSwitch(
                                 )
                         )
                         Text(
-                            text = "TAPE / OFF",
-                            fontSize = 8.5.sp,
+                            text = "TAPE",
+                            fontSize = 8.sp,
                             fontWeight = if (!isRadio) FontWeight.Black else FontWeight.Bold,
                             color = if (!isRadio) Color(0xFFFFB300) else Color(0xFF607D8B)
                         )
@@ -282,26 +282,26 @@ fun FunctionSelectorSwitch(
                     // Right button: RADIO
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(3.dp),
                         modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
+                            .clip(RoundedCornerShape(3.dp))
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null
                             ) { switchTo(PlaybackSource.RADIO) }
-                            .padding(horizontal = 4.dp, vertical = 3.dp)
+                            .padding(horizontal = 2.dp, vertical = 2.dp)
                             .testTag("switch_label_radio")
                     ) {
                         Text(
                             text = "RADIO",
-                            fontSize = 8.5.sp,
+                            fontSize = 8.sp,
                             fontWeight = if (isRadio) FontWeight.Black else FontWeight.Bold,
                             color = if (isRadio) Color(0xFF81C784) else Color(0xFF607D8B)
                         )
                         // LED for Radio mode (Emerald Green when active)
                         Box(
                             modifier = Modifier
-                                .size(6.dp)
+                                .size(5.dp)
                                 .clip(CircleShape)
                                 .background(if (isRadio) Color(0xFF4CAF50) else Color(0xFF263238))
                                 .border(
