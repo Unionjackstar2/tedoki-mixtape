@@ -98,38 +98,55 @@ fun FunctionSelectorSwitch(
             modifier = Modifier.padding(bottom = 2.dp)
         )
 
-        // Molded chassis panel for the switch (compact classic size)
+        // Molded chassis panel for the switch (compact classic size with 3D beveled frame)
         Box(
             modifier = Modifier
-                .width(104.dp)
-                .clip(RoundedCornerShape(5.dp))
-                .background(Color(0xFF14161A))
-                .border(1.dp, Color(0xFF282C34), RoundedCornerShape(5.dp))
-                .padding(horizontal = 4.dp, vertical = 4.dp),
+                .width(108.dp)
+                .shadow(elevation = 4.dp, shape = RoundedCornerShape(6.dp))
+                .clip(RoundedCornerShape(6.dp))
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color(0xFF22252C),
+                            Color(0xFF14161A),
+                            Color(0xFF0C0D10)
+                        )
+                    )
+                )
+                .border(
+                    width = 1.dp,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            Color(0xFF484E5B),
+                            Color(0xFF1D2026)
+                        )
+                    ),
+                    shape = RoundedCornerShape(6.dp)
+                )
+                .padding(horizontal = 4.5.dp, vertical = 4.5.dp),
             contentAlignment = Alignment.Center
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                // Recessed slider track
+                // Recessed slider track with deep inner shadow
                 BoxWithConstraints(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(22.dp)
-                        .shadow(elevation = 2.dp, shape = RoundedCornerShape(3.dp))
-                        .clip(RoundedCornerShape(3.dp))
+                        .height(24.dp)
+                        .clip(RoundedCornerShape(3.5.dp))
                         .background(
                             Brush.verticalGradient(
                                 colors = listOf(
-                                    Color(0xFF090A0C),
-                                    Color(0xFF17191E),
-                                    Color(0xFF0D0E11)
+                                    Color(0xFF040506),
+                                    Color(0xFF0C0D10),
+                                    Color(0xFF07080A)
                                 )
                             )
                         )
-                        .border(1.dp, Color(0xFF2B2F38), RoundedCornerShape(3.dp))
-                        .padding(1.5.dp)
+                        .border(1.dp, Color(0xFF20232A), RoundedCornerShape(3.5.dp))
+                        .padding(horizontal = 2.dp, vertical = 1.5.dp)
                         .pointerInput(isRadio) {
                             detectHorizontalDragGestures { _, dragAmount ->
                                 if (dragAmount > 5f && !isRadio) {
@@ -186,24 +203,32 @@ fun FunctionSelectorSwitch(
                         )
                     }
 
-                    // Tactile slider knob (tapping knob toggles source, clicking anywhere on it also works)
+                    // Tactile 3D sculpted slider knob (tapping knob toggles source, clicking anywhere on it also works)
                     Box(
                         modifier = Modifier
                             .offset(x = animatedSliderOffset)
                             .width(sliderWidth)
                             .fillMaxHeight()
-                            .shadow(elevation = 3.dp, shape = RoundedCornerShape(2.5.dp))
-                            .clip(RoundedCornerShape(2.5.dp))
+                            .shadow(elevation = 5.dp, shape = RoundedCornerShape(3.dp))
+                            .clip(RoundedCornerShape(3.dp))
                             .background(
                                 Brush.verticalGradient(
                                     colors = listOf(
-                                        Color(0xFFE2E7ED),
-                                        Color(0xFF8D959E),
-                                        Color(0xFF495057)
+                                        Color(0xFFF1F5F9),
+                                        Color(0xFFCBD5E1),
+                                        Color(0xFF94A3B8),
+                                        Color(0xFF475569),
+                                        Color(0xFF334155)
                                     )
                                 )
                             )
-                            .border(1.dp, Color(0xFFF1F5F9), RoundedCornerShape(2.5.dp))
+                            .border(
+                                width = 1.dp,
+                                brush = Brush.verticalGradient(
+                                    colors = listOf(Color(0xFFFFFFFF), Color(0xFF64748B))
+                                ),
+                                shape = RoundedCornerShape(3.dp)
+                            )
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null
@@ -211,28 +236,40 @@ fun FunctionSelectorSwitch(
                             .testTag("switch_slider_knob"),
                         contentAlignment = Alignment.Center
                     ) {
-                        // Raised tactile ribbing on slider knob
+                        // Top specular edge highlight
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(1.dp)
+                                .align(Alignment.TopCenter)
+                                .background(Color(0xCCFFFFFF))
+                        )
+
+                        // Center raised tactile ribbing on slider knob with specular highlights
                         Row(
-                            horizontalArrangement = Arrangement.spacedBy(1.5.dp),
+                            horizontalArrangement = Arrangement.spacedBy(2.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Box(
                                 modifier = Modifier
                                     .width(1.5.dp)
-                                    .fillMaxHeight(0.65f)
-                                    .background(Color(0xFF212529), RoundedCornerShape(1.dp))
+                                    .fillMaxHeight(0.60f)
+                                    .background(Color(0xFF1E293B), RoundedCornerShape(1.dp))
                             )
+                            // Center colored indicator groove
                             Box(
                                 modifier = Modifier
-                                    .width(1.5.dp)
+                                    .width(2.dp)
                                     .fillMaxHeight(0.75f)
-                                    .background(Color(0xFF16181B), RoundedCornerShape(1.dp))
+                                    .clip(RoundedCornerShape(1.dp))
+                                    .background(Color(0xFF0F172A))
+                                    .border(0.5.dp, Color(0xFF64748B), RoundedCornerShape(1.dp))
                             )
                             Box(
                                 modifier = Modifier
                                     .width(1.5.dp)
-                                    .fillMaxHeight(0.65f)
-                                    .background(Color(0xFF212529), RoundedCornerShape(1.dp))
+                                    .fillMaxHeight(0.60f)
+                                    .background(Color(0xFF1E293B), RoundedCornerShape(1.dp))
                             )
                         }
                     }

@@ -19,6 +19,11 @@ val ShareTechMonoFontFamily = FontFamily(
     Font(R.font.share_tech_mono, FontWeight.Normal)
 )
 
+// Authentic retro 16x16 dot matrix font
+val DotGothic16FontFamily = FontFamily(
+    Font(R.font.dotgothic16, FontWeight.Normal)
+)
+
 val Typography = Typography(
     bodyLarge = TextStyle(
         fontFamily = FontFamily.Default,

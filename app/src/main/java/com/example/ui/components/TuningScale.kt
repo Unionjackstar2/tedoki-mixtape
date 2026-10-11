@@ -17,6 +17,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -48,7 +49,8 @@ fun TuningScale(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(54.dp)
+            .height(44.dp)
+            .shadow(4.dp, RoundedCornerShape(6.dp))
             .clip(RoundedCornerShape(6.dp))
             .background(
                 Brush.verticalGradient(
@@ -60,14 +62,18 @@ fun TuningScale(
                         )
                     } else {
                         listOf(
-                            AmberDisplayBackground,
-                            Color(0xFF261908),
-                            AmberDisplayBackground
+                            Color(0xFF1F1405),
+                            Color(0xFF2C1C08),
+                            Color(0xFF140D04)
                         )
                     }
                 )
             )
-            .border(1.5.dp, if (isDimmed) Color(0xFF191208) else Color(0xFF422F17), RoundedCornerShape(6.dp))
+            .border(
+                1.5.dp,
+                if (isDimmed) Color(0xFF1C140A) else Color(0xFF5A3E1B),
+                RoundedCornerShape(6.dp)
+            )
             .pointerInput(isDimmed) {
                 if (!isDimmed) {
                     detectTapGestures { offset ->
@@ -95,19 +101,45 @@ fun TuningScale(
             val width = size.width
             val height = size.height
 
-            // Background subtle illuminated warm grid glow
+            // Background subtle illuminated warm grid glow with dual bulb lamps
             if (!isDimmed) {
-                drawRect(
+                // Left lamp glow
+                drawCircle(
                     brush = Brush.radialGradient(
-                        colors = listOf(Color(0x33FF9800), Color(0x00000000)),
-                        center = Offset(width / 2, height / 2),
-                        radius = width * 0.6f
+                        colors = listOf(Color(0x35FFA000), Color.Transparent),
+                        center = Offset(width * 0.25f, height * 0.4f),
+                        radius = width * 0.35f
+                    )
+                )
+                // Right lamp glow
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(Color(0x35FFA000), Color.Transparent),
+                        center = Offset(width * 0.75f, height * 0.4f),
+                        radius = width * 0.35f
                     )
                 )
             }
 
-            // FM text on the left
+            // Top inner shadow cast into the recessed glass cavity
+            drawRect(
+                brush = Brush.verticalGradient(
+                    colors = listOf(Color(0x99000000), Color.Transparent),
+                    startY = 0f,
+                    endY = 10.dp.toPx()
+                )
+            )
+
+            // FM text on the left with 3D embossed shadow
             drawContext.canvas.nativeCanvas.apply {
+                val shadowPaint = android.graphics.Paint().apply {
+                    color = android.graphics.Color.parseColor("#33000000")
+                    textSize = 34f
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    isAntiAlias = true
+                }
+                drawText("FM", 26f, height * 0.53f, shadowPaint)
+
                 val paint = android.graphics.Paint().apply {
                     color = android.graphics.Color.parseColor("#FFB300")
                     textSize = 34f
@@ -160,23 +192,57 @@ fun TuningScale(
                 drawContext.canvas.nativeCanvas.drawText("$freq", x, height * 0.34f, textPaint)
             }
 
-            // Illuminated Red Needle marker
+            // Illuminated Red Needle marker with 3D physical cast shadow
             val needleFraction = ((currentFrequencyMhz - minFreq) / (maxFreq - minFreq)).coerceIn(0f, 1f)
             val needleX = startX + needleFraction * scaleWidth
 
-            // Needle shadow / glow
+            // Physical shadow cast onto the dial plate behind the needle
             drawLine(
-                color = AmberDialNeedle.copy(alpha = 0.4f),
+                color = Color(0x66000000),
+                start = Offset(needleX + 2.dp.toPx(), 7.dp.toPx()),
+                end = Offset(needleX + 2.dp.toPx(), height - 5.dp.toPx()),
+                strokeWidth = 3.dp.toPx()
+            )
+
+            // Needle diffuse glow
+            drawLine(
+                color = AmberDialNeedle.copy(alpha = 0.35f),
                 start = Offset(needleX, 6.dp.toPx()),
                 end = Offset(needleX, height - 6.dp.toPx()),
                 strokeWidth = 6.dp.toPx()
             )
-            // Needle solid line
+
+            // Needle solid blade
             drawLine(
                 color = AmberDialNeedle,
                 start = Offset(needleX, 6.dp.toPx()),
                 end = Offset(needleX, height - 6.dp.toPx()),
                 strokeWidth = 2.5.dp.toPx()
+            )
+
+            // Needle bright specular center light pipe
+            drawLine(
+                color = Color(0xCCFFFFFF),
+                start = Offset(needleX, 9.dp.toPx()),
+                end = Offset(needleX, height - 9.dp.toPx()),
+                strokeWidth = 1.dp.toPx()
+            )
+
+            // Realistic diagonal specular glass reflection streak across dial lens
+            drawLine(
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        Color(0x00FFFFFF),
+                        Color(0x18FFFFFF),
+                        Color(0x28FFFFFF),
+                        Color(0x00FFFFFF)
+                    ),
+                    start = Offset(0f, height),
+                    end = Offset(width * 0.6f, 0f)
+                ),
+                start = Offset(0f, height),
+                end = Offset(width * 0.6f, 0f),
+                strokeWidth = 24.dp.toPx()
             )
         }
     }

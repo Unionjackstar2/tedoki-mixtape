@@ -29,6 +29,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import com.example.audio.AudioEngine
 import com.example.data.AppDatabase
+import com.example.data.FavoritesManager
 import com.example.data.RadioBrowserService
 import com.example.model.Cassette
 import com.example.model.DeckState
@@ -123,12 +124,18 @@ fun MixtapeApp(
     val cassettes by database.cassetteDao().getAllCassettes().collectAsState(initial = emptyList())
     val allTrackMarkers by database.cassetteDao().getAllTrackMarkers().collectAsState(initial = emptyList())
     val tracksByCassette = remember(allTrackMarkers) { allTrackMarkers.groupBy { it.cassetteId } }
-    val stations = remember { radioService.curatedStations }
+    val favoritesManager = remember { FavoritesManager.getInstance(context) }
+    val favoriteStations by favoritesManager.favoriteStations.collectAsState()
+    val stations = remember(favoriteStations, radioService.curatedStations) {
+        val combined = (favoriteStations + radioService.curatedStations).distinctBy { it.stationuuid }
+        if (combined.isNotEmpty()) combined else radioService.curatedStations
+    }
 
     // Initialize initial station and tape
     LaunchedEffect(Unit) {
         if (stations.isNotEmpty() && audioEngine.currentStation.value == null) {
-            audioEngine.setStation(stations[0]) // 1LIVE
+            val initialStation = favoriteStations.firstOrNull() ?: stations[0]
+            audioEngine.setStation(initialStation)
         }
         scope.launch {
             if (cassettes.isEmpty() || allTrackMarkers.isEmpty()) {
@@ -138,8 +145,22 @@ fun MixtapeApp(
     }
 
     LaunchedEffect(cassettes) {
-        if (cassettes.isNotEmpty() && audioEngine.activeTape.value == null) {
-            audioEngine.setActiveTape(cassettes.first())
+        if (cassettes.isNotEmpty()) {
+            val current = audioEngine.activeTape.value
+            if (current == null) {
+                audioEngine.setActiveTape(cassettes.first())
+            } else {
+                val dbMatch = cassettes.find { it.id == current.id }
+                if (dbMatch != null && dbMatch != current) {
+                    val isDeckBusy = audioEngine.deckState.value == DeckState.PLAYING ||
+                            audioEngine.deckState.value == DeckState.RECORDING ||
+                            audioEngine.deckState.value == DeckState.RECORDING_STARTING ||
+                            audioEngine.deckState.value == DeckState.RECORDING_STOPPING
+                    if (!isDeckBusy) {
+                        audioEngine.setActiveTape(dbMatch)
+                    }
+                }
+            }
         }
     }
 
@@ -166,6 +187,10 @@ fun MixtapeApp(
                                 database.cassetteDao().insertTrackMarkers(markers)
                             }
                         }
+                    },
+                    onOpenDetail = { tape ->
+                        viewingTapeForDetail = tape
+                        currentScreen = AppScreen.DETAIL
                     }
                 )
             }

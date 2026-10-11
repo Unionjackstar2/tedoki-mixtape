@@ -151,31 +151,63 @@ class RadioBrowserService {
     suspend fun searchStations(
         query: String,
         filter: String = "Alle",
-        favoriteUuids: Set<String> = emptySet()
+        favoriteStations: List<RadioStation> = emptyList()
     ): List<RadioStation> = withContext(Dispatchers.IO) {
         val trimmed = query.trim()
-        val localFiltered = when (filter) {
-            "Favoriten", "★ Favoriten" -> curatedStations.filter { favoriteUuids.contains(it.stationuuid) }
-            "Beliebt" -> curatedStations.filter { it.isFavorite || favoriteUuids.contains(it.stationuuid) }
-            "DAB+" -> curatedStations.filter { it.name.contains("WDR") || it.name.contains("DLF") || it.name.contains("Deutschlandfunk") || it.name.contains("SWR3") }
-            "Internet" -> curatedStations
+
+        if (filter == "Favoriten" || filter == "★ Favoriten") {
+            return@withContext if (trimmed.isEmpty()) {
+                favoriteStations
+            } else {
+                favoriteStations.filter {
+                    it.name.contains(trimmed, ignoreCase = true) ||
+                    it.tags.contains(trimmed, ignoreCase = true) ||
+                    it.slogan.contains(trimmed, ignoreCase = true)
+                }
+            }
+        }
+
+        val favUuids = favoriteStations.map { it.stationuuid }.toSet()
+        val localFiltered = when {
+            filter.contains("Pop", ignoreCase = true) -> curatedStations.filter { it.tags.contains("Pop", ignoreCase = true) }
+            filter.contains("Rock", ignoreCase = true) -> curatedStations.filter { it.tags.contains("Rock", ignoreCase = true) || it.tags.contains("Alternative", ignoreCase = true) }
+            filter.contains("Oldies", ignoreCase = true) || filter.contains("80", ignoreCase = true) -> curatedStations.filter { it.tags.contains("Oldies", ignoreCase = true) }
+            filter.contains("News", ignoreCase = true) || filter.contains("Info", ignoreCase = true) || filter.contains("Kultur", ignoreCase = true) -> curatedStations.filter { it.tags.contains("News", ignoreCase = true) || it.tags.contains("Kultur", ignoreCase = true) }
+            filter == "DAB+" -> curatedStations.filter { it.name.contains("WDR") || it.name.contains("DLF") || it.name.contains("Deutschlandfunk") || it.name.contains("SWR3") || it.name.contains("Bayern") }
             else -> curatedStations
         }.filter {
             trimmed.isEmpty() || it.name.contains(trimmed, ignoreCase = true) || it.tags.contains(trimmed, ignoreCase = true) || it.slogan.contains(trimmed, ignoreCase = true)
         }
 
-        if (trimmed.isEmpty() && (filter != "Alle" && filter != "Internet")) {
-            return@withContext localFiltered
+        // Determine tag for online search if query is empty
+        val onlineTag = when {
+            filter.contains("Pop", ignoreCase = true) -> "pop"
+            filter.contains("Rock", ignoreCase = true) -> "rock"
+            filter.contains("Oldies", ignoreCase = true) || filter.contains("80", ignoreCase = true) -> "80s"
+            filter.contains("News", ignoreCase = true) || filter.contains("Info", ignoreCase = true) -> "news"
+            filter.contains("Electro", ignoreCase = true) || filter.contains("Dance", ignoreCase = true) -> "dance"
+            filter.contains("Kultur", ignoreCase = true) -> "culture"
+            else -> null
         }
 
         // Attempt live Radio Browser API query across mirrors
         for (mirror in mirrors) {
             try {
-                val url = if (trimmed.isNotEmpty()) {
-                    val encodedQuery = URLEncoder.encode(trimmed, "UTF-8")
-                    "$mirror/json/stations/byname/$encodedQuery?hidebroken=true&limit=30&order=clickcount&reverse=true"
-                } else {
-                    "$mirror/json/stations/topclick/30?hidebroken=true"
+                val url = when {
+                    trimmed.isNotEmpty() -> {
+                        val encodedQuery = URLEncoder.encode(trimmed, "UTF-8")
+                        "$mirror/json/stations/byname/$encodedQuery?hidebroken=true&limit=35&order=clickcount&reverse=true"
+                    }
+                    onlineTag != null -> {
+                        val encodedTag = URLEncoder.encode(onlineTag, "UTF-8")
+                        "$mirror/json/stations/bytag/$encodedTag?hidebroken=true&countrycode=DE&limit=30&order=clickcount&reverse=true"
+                    }
+                    filter == "DAB+" || filter == "Deutschland" -> {
+                        "$mirror/json/stations/bycountry/germany?hidebroken=true&limit=35&order=clickcount&reverse=true"
+                    }
+                    else -> {
+                        "$mirror/json/stations/topclick/35?hidebroken=true"
+                    }
                 }
                 val request = Request.Builder()
                     .url(url)
@@ -193,9 +225,10 @@ class RadioBrowserService {
                             val streamUrl = obj.optString("url_resolved").ifEmpty { obj.optString("url") }
                             if (name.isNotBlank() && streamUrl.startsWith("http")) {
                                 val freq = 88.0f + (name.hashCode().mod(200)) / 10.0f
+                                val uuid = obj.optString("stationuuid")
                                 apiResults.add(
                                     RadioStation(
-                                        stationuuid = obj.optString("stationuuid"),
+                                        stationuuid = uuid,
                                         name = name,
                                         slogan = obj.optString("tags").split(",").take(2).joinToString(", "),
                                         streamUrl = streamUrl,
@@ -205,6 +238,7 @@ class RadioBrowserService {
                                         tags = obj.optString("tags"),
                                         codec = obj.optString("codec", "MP3"),
                                         bitrate = obj.optInt("bitrate", 128),
+                                        isFavorite = favUuids.contains(uuid),
                                         dialFrequencyMhz = freq.coerceIn(88.0f, 108.0f),
                                         logoBgHex = "#" + Integer.toHexString(name.hashCode()).takeLast(6).padStart(6, '3'),
                                         logoText = name.take(5)

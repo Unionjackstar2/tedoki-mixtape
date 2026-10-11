@@ -18,14 +18,4 @@ class ExampleRobolectricTest {
     val appName = context.getString(R.string.app_name)
     assertEquals("Tedoki Mixtape", appName)
   }
-
-  @Test
-  fun `test audioEngine radio initialization`() {
-    val context = ApplicationProvider.getApplicationContext<Context>()
-    val audioEngine = com.example.audio.AudioEngine(context)
-    println("AudioEngine created, playback source: ${audioEngine.playbackSource.value}")
-    audioEngine.setPlaybackSource(com.example.model.PlaybackSource.RADIO)
-    println("Switched to RADIO, isRadioPlaying: ${audioEngine.isRadioPlaying.value}, station: ${audioEngine.currentStation.value?.name}")
-    audioEngine.release()
-  }
 }

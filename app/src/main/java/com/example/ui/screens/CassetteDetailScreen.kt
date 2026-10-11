@@ -1,6 +1,8 @@
 package com.example.ui.screens
 
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -20,11 +22,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Radio
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -35,6 +43,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -42,6 +51,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -54,6 +64,7 @@ import com.example.ui.theme.CassetteLabelPaper
 import com.example.ui.theme.CaveatFontFamily
 import com.example.ui.theme.DeckSurfaceDark
 import com.example.ui.theme.ShareTechMonoFontFamily
+import com.example.util.AudioFileUtils
 
 @Composable
 fun CassetteDetailScreen(
@@ -65,8 +76,14 @@ fun CassetteDetailScreen(
     onBack: () -> Unit
 ) {
     BackHandler { onBack() }
+    val context = LocalContext.current
 
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    var refreshCounter by remember { mutableIntStateOf(0) }
+
+    val audioFileInfo = remember(cassette, refreshCounter) {
+        AudioFileUtils.inspectAudioFile(context, cassette)
+    }
 
     val recordedMinutes = cassette.durationSec / 60
     val totalCapacityMin = 60 // C-60 format
@@ -273,6 +290,223 @@ fun CassetteDetailScreen(
                     text = "Notizen: ${cassette.notes}",
                     fontSize = 12.sp,
                     color = Color(0xFF90A4AE)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Audio File & Storage Location Card (Technical file details & external playback)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(Color(0xFF1E2127))
+                .border(1.dp, Color(0xFF333842), RoundedCornerShape(8.dp))
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.Folder,
+                        contentDescription = null,
+                        tint = Color(0xFFFFB300),
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "AUDIODATEI & SPEICHERORT",
+                        fontFamily = ShareTechMonoFontFamily,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFFFB300),
+                        letterSpacing = 1.sp
+                    )
+                }
+
+                IconButton(
+                    onClick = { refreshCounter++ },
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "Datei-Info aktualisieren",
+                        tint = Color(0xFF90A4AE),
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+
+            // File Name & Format
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Dateiname", fontSize = 11.sp, color = Color(0xFF90A4AE))
+                    Text(
+                        text = audioFileInfo.fileName,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = ShareTechMonoFontFamily,
+                        color = Color.White
+                    )
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text("Format / MIME", fontSize = 11.sp, color = Color(0xFF90A4AE))
+                    Text(
+                        text = audioFileInfo.mimeType,
+                        fontSize = 12.sp,
+                        fontFamily = ShareTechMonoFontFamily,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFFFFD54F)
+                    )
+                }
+            }
+
+            // Real File Size
+            Column {
+                Text("Dateigröße (Real ermittelt)", fontSize = 11.sp, color = Color(0xFF90A4AE))
+                Text(
+                    text = audioFileInfo.formattedSize,
+                    fontSize = 13.sp,
+                    fontFamily = ShareTechMonoFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    color = if (audioFileInfo.sizeBytes > 0L) Color(0xFF81C784) else Color(0xFFE57373)
+                )
+                Text(
+                    text = "Dezimal (MB) und Binär (MiB) direkt aus Dateisystem ermittelt.",
+                    fontSize = 10.sp,
+                    color = Color(0xFF78909C)
+                )
+            }
+
+            // File Status
+            Column {
+                Text("Dateistatus", fontSize = 11.sp, color = Color(0xFF90A4AE))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(
+                            when {
+                                audioFileInfo.isValidAudioFile -> Color(0xFF1B3B2B)
+                                audioFileInfo.exists && audioFileInfo.sizeBytes == 0L -> Color(0xFF3E2F1A)
+                                else -> Color(0xFF381B1B)
+                            }
+                        )
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                ) {
+                    Icon(
+                        imageVector = when {
+                            audioFileInfo.isValidAudioFile -> Icons.Default.CheckCircle
+                            audioFileInfo.exists && audioFileInfo.sizeBytes == 0L -> Icons.Default.Warning
+                            else -> Icons.Default.Error
+                        },
+                        contentDescription = null,
+                        tint = when {
+                            audioFileInfo.isValidAudioFile -> Color(0xFF4CAF50)
+                            audioFileInfo.exists && audioFileInfo.sizeBytes == 0L -> Color(0xFFFFB300)
+                            else -> Color(0xFFE57373)
+                        },
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = audioFileInfo.statusText,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = when {
+                            audioFileInfo.isValidAudioFile -> Color(0xFFA5D6A7)
+                            audioFileInfo.exists && audioFileInfo.sizeBytes == 0L -> Color(0xFFFFE082)
+                            else -> Color(0xFFEF9A9A)
+                        }
+                    )
+                }
+            }
+
+            // Storage Location (Absolute Filesystem Path)
+            Column {
+                Text("Speicherort (Dateisystempfad)", fontSize = 11.sp, color = Color(0xFF90A4AE))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color(0xFF14161A))
+                        .border(1.dp, Color(0xFF2C3038), RoundedCornerShape(4.dp))
+                        .padding(8.dp)
+                ) {
+                    Text(
+                        text = audioFileInfo.absolutePath,
+                        fontFamily = ShareTechMonoFontFamily,
+                        fontSize = 11.sp,
+                        color = Color(0xFFB0BEC5),
+                        lineHeight = 14.sp
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+                if (audioFileInfo.isInternalStorage) {
+                    Text(
+                        text = "Hinweis: Interner privater App-Speicher (filesDir). Aus Android-Sicherheitsgründen für normale Dateimanager ohne Root nicht direkt sichtbar.",
+                        fontSize = 10.sp,
+                        color = Color(0xFF90A4AE),
+                        lineHeight = 13.sp
+                    )
+                }
+            }
+
+            // Action: "In externem Player öffnen"
+            Button(
+                onClick = {
+                    if (!audioFileInfo.isValidAudioFile) {
+                        Toast.makeText(
+                            context,
+                            "Keine abspielbare Audiodatei: ${audioFileInfo.statusText}",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    } else {
+                        when (val res = AudioFileUtils.openInExternalPlayer(context, cassette)) {
+                            is AudioFileUtils.OpenResult.Success -> {
+                                Toast.makeText(context, "Externer Audioplayer wird gestartet…", Toast.LENGTH_SHORT).show()
+                            }
+                            is AudioFileUtils.OpenResult.Error -> {
+                                Toast.makeText(context, res.message, Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (audioFileInfo.isValidAudioFile) Color(0xFF263238) else Color(0xFF1E2127),
+                    contentColor = if (audioFileInfo.isValidAudioFile) Color(0xFFFFB300) else Color(0xFF78909C)
+                ),
+                shape = RoundedCornerShape(6.dp),
+                border = BorderStroke(
+                    1.dp,
+                    if (audioFileInfo.isValidAudioFile) Color(0xFFFFB300) else Color(0xFF37474F)
+                )
+            ) {
+                Icon(
+                    imageVector = Icons.Default.OpenInNew,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "In externem Player öffnen",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold
                 )
             }
         }

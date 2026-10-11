@@ -20,6 +20,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -73,49 +75,94 @@ fun MechanicalTapeCounter(
 
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(4.dp))
-            .background(Color(0xFF0D0E10))
-            .border(1.5.dp, Color(0xFF3A3F47), RoundedCornerShape(4.dp))
-            .padding(horizontal = 5.dp, vertical = 3.dp)
+            .shadow(3.dp, RoundedCornerShape(5.dp))
+            .clip(RoundedCornerShape(5.dp))
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(Color(0xFF1F2228), Color(0xFF121417), Color(0xFF0B0C0E))
+                )
+            )
+            .border(
+                1.5.dp,
+                Brush.verticalGradient(
+                    colors = listOf(Color(0xFF4C525E), Color(0xFF1E2128))
+                ),
+                RoundedCornerShape(5.dp)
+            )
+            .padding(horizontal = 5.dp, vertical = 3.5.dp)
     ) {
         Row(
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            horizontalArrangement = Arrangement.spacedBy(2.5.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             digits.forEach { digit ->
+                // Cylindrical odometer number drum
                 Box(
                     modifier = Modifier
-                        .size(width = 15.dp, height = 22.dp)
-                        .background(Color(0xFF1B1D22), RoundedCornerShape(2.dp))
-                        .border(0.5.dp, Color(0xFF2E323A), RoundedCornerShape(2.dp)),
+                        .size(width = 16.dp, height = 24.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color(0xFF090A0D),
+                                    Color(0xFF1F232B),
+                                    Color(0xFF2E333D),
+                                    Color(0xFF1C2027),
+                                    Color(0xFF07080A)
+                                )
+                            )
+                        )
+                        .border(0.5.dp, Color(0xFF383E49), RoundedCornerShape(2.dp)),
                     contentAlignment = Alignment.Center
                 ) {
+                    // Drum center highlight line behind numeral
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(Color(0x33FFFFFF))
+                    )
+
                     Text(
                         text = digit,
                         fontFamily = ShareTechMonoFontFamily,
                         fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFFECEFF1)
+                        fontWeight = FontWeight.Black,
+                        color = Color(0xFFF1F5F9)
                     )
                 }
             }
 
             if (onReset != null) {
-                Spacer(modifier = Modifier.width(3.dp))
-                // Tactile round reset push button
+                Spacer(modifier = Modifier.width(3.5.dp))
+                // 3D Tactile spring-loaded reset push button
                 Box(
                     modifier = Modifier
-                        .size(16.dp)
+                        .size(17.dp)
                         .clip(CircleShape)
-                        .background(Color(0xFF23272F))
-                        .border(1.dp, Color(0xFF4A5160), CircleShape)
+                        .background(
+                            Brush.radialGradient(
+                                colors = listOf(
+                                    Color(0xFF3D4452),
+                                    Color(0xFF22262E),
+                                    Color(0xFF15171C)
+                                )
+                            )
+                        )
+                        .border(
+                            1.dp,
+                            Brush.verticalGradient(
+                                colors = listOf(Color(0xFF6B7485), Color(0xFF242730))
+                            ),
+                            CircleShape
+                        )
                         .clickable { onReset() },
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = "R",
-                        fontSize = 8.sp,
-                        fontWeight = FontWeight.Bold,
+                        fontSize = 8.5.sp,
+                        fontWeight = FontWeight.Black,
                         color = Color(0xFFFFB300)
                     )
                 }
@@ -132,12 +179,43 @@ fun DualVuMeter(
 ) {
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(4.dp))
-            .background(Color(0xFF0F1114))
-            .border(1.dp, Color(0xFF2A2D35), RoundedCornerShape(4.dp))
-            .padding(horizontal = 6.dp, vertical = 5.dp),
-        verticalArrangement = Arrangement.spacedBy(3.dp)
+            .shadow(3.dp, RoundedCornerShape(5.dp))
+            .clip(RoundedCornerShape(5.dp))
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xFF08090C),
+                        Color(0xFF111418),
+                        Color(0xFF090A0D)
+                    )
+                )
+            )
+            .border(
+                1.5.dp,
+                Brush.verticalGradient(
+                    colors = listOf(Color(0xFF3E4552), Color(0xFF1C1F26))
+                ),
+                RoundedCornerShape(5.dp)
+            )
+            .padding(horizontal = 6.dp, vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
+        // Screen-printed dB scale header line above channels
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(start = 14.dp, end = 2.dp, bottom = 1.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            listOf("-20", "-10", "-5", "-1", "0", "+3", "+6").forEach { db ->
+                Text(
+                    text = db,
+                    fontSize = 7.5.sp,
+                    fontFamily = ShareTechMonoFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    color = if (db.startsWith("+")) Color(0xFFFF5252) else if (db == "0") Color(0xFFFFC107) else Color(0xFF78909C)
+                )
+            }
+        }
+
         VuChannelRow(label = "L", activeBars = levelLeft)
         VuChannelRow(label = "R", activeBars = levelRight)
     }
@@ -156,9 +234,9 @@ private fun VuChannelRow(
     ) {
         Text(
             text = label,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Bold,
-            color = Color(0xFF78909C),
+            fontSize = 9.sp,
+            fontWeight = FontWeight.Black,
+            color = Color(0xFF90A4AE),
             modifier = Modifier.width(13.dp)
         )
 
@@ -175,12 +253,35 @@ private fun VuChannelRow(
                     else -> VuRed
                 }
 
+                // 3D beveled LED light pipe segment
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .height(6.dp)
+                        .height(7.dp)
                         .clip(RoundedCornerShape(1.dp))
-                        .background(barColor)
+                        .background(
+                            if (isActive) {
+                                Brush.verticalGradient(
+                                    colors = listOf(
+                                        Color.White.copy(alpha = 0.7f),
+                                        barColor,
+                                        barColor.copy(alpha = 0.85f)
+                                    )
+                                )
+                            } else {
+                                Brush.verticalGradient(
+                                    colors = listOf(
+                                        Color(0xFF2C3038),
+                                        Color(0xFF1A1C22)
+                                    )
+                                )
+                            }
+                        )
+                        .border(
+                            0.5.dp,
+                            if (isActive) barColor else Color(0xFF14161C),
+                            RoundedCornerShape(1.dp)
+                        )
                 )
             }
         }

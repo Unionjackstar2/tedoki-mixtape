@@ -75,8 +75,7 @@ class AudioEngineLogicTest {
         assertEquals(DeckState.STOPPED, audioEngine.deckState.value)
 
         // 6. Im RADIO-Modus STOP/EJECT einmal drücken: Radio läuft weiter; Kassette bleibt gestoppt eingelegt.
-        val stopResult = audioEngine.onStopEjectPress()
-        assertNull(stopResult)
+        audioEngine.onStopEjectPress()
         assertTrue(audioEngine.isRadioPlaying.value)
         assertEquals(DeckState.STOPPED, audioEngine.deckState.value)
         assertNotNull(audioEngine.activeTape.value)
@@ -97,11 +96,9 @@ class AudioEngineLogicTest {
         assertTrue(audioEngine.isRadioPlaying.value)
 
         // 10. STOP/EJECT einmal drücken: Aufnahme endet sicher, Radio läuft weiter.
-        val recordingResult = audioEngine.onStopEjectPress()
-        assertNotNull(recordingResult)
-        assertEquals(DeckState.STOPPED, audioEngine.deckState.value)
+        audioEngine.onStopEjectPress()
         assertTrue(audioEngine.isRadioPlaying.value)
-        val recordedTape = recordingResult!!.cassette
+        val recordedTape = audioEngine.activeTape.value!!
         assertTrue(recordedTape.durationSec >= testTape.durationSec)
 
         // 11. STOP/EJECT erneut drücken: Kassette wird ausgeworfen.
@@ -116,9 +113,9 @@ class AudioEngineLogicTest {
         assertEquals(DeckState.RECORD_ARMED, audioEngine.deckState.value)
         audioEngine.onPlayPress()
         assertEquals(DeckState.RECORDING, audioEngine.deckState.value)
-        val secondResult = audioEngine.onStopEjectPress()
-        assertNotNull(secondResult)
-        assertTrue(secondResult!!.cassette.durationSec >= recordedTape.durationSec)
+        audioEngine.onStopEjectPress()
+        val secondTape = audioEngine.activeTape.value!!
+        assertTrue(secondTape.durationSec >= recordedTape.durationSec)
 
         // 13. RADIO verlassen: Radio stoppt. Im TAPE / OFF-Modus steuern die Transporttasten ausschließlich die Kassette.
         audioEngine.setPlaybackSource(PlaybackSource.TAPE)
@@ -261,10 +258,9 @@ class AudioEngineLogicTest {
         assertEquals(DeckState.RECORDING, audioEngine.deckState.value)
 
         // Switching to TAPE must finalize recording and set deck state to STOPPED
-        val result = audioEngine.setPlaybackSource(PlaybackSource.TAPE)
+        audioEngine.setPlaybackSource(PlaybackSource.TAPE)
         assertEquals(PlaybackSource.TAPE, audioEngine.playbackSource.value)
         assertFalse(audioEngine.isRadioPlaying.value)
         assertEquals(DeckState.STOPPED, audioEngine.deckState.value)
-        assertNotNull(result)
     }
 }

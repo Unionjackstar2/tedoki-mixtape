@@ -15,6 +15,15 @@ val AmberScaleText = Color(0xFFFFB300)
 val AmberScaleSub = Color(0xFFFF8F00)
 val AmberDialNeedle = Color(0xFFFF2200)
 
+// Soft Vintage Orange (Sanftes Orange für 14-Segment / Matrix Radioanzeige)
+val RetroOrangeLit = Color(0xFFFF9E3B)
+val RetroOrangeGlow = Color(0x66FF8F00)
+val RetroOrangeUnlit = Color(0xFF261304)
+val RetroOrangeDimmed = Color(0xFF4D2A0E)
+val RetroOrangeSubtext = Color(0xFFD48B3B)
+val RetroOrangeSubtextDimmed = Color(0xFF503417)
+val RetroOrangeDisplayBg = Color(0xFF0F0B05)
+
 // Digital LCD / OLED Panel
 val DigitalLcdBackground = Color(0xFF111317)
 val DigitalLcdText = Color(0xFFECEFF1)

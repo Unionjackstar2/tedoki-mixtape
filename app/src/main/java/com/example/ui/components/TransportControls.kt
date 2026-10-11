@@ -53,15 +53,32 @@ fun TransportControls(
     onEjectClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Row(
+    // Recessed keyboard well tray with bevelled edge
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .clip(RoundedCornerShape(6.dp))
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xFF0C0D10),
+                        Color(0xFF131519),
+                        Color(0xFF0F1014)
+                    )
+                )
+            )
+            .border(1.5.dp, Color(0xFF262A33), RoundedCornerShape(6.dp))
+            .padding(horizontal = 5.dp, vertical = 4.dp)
     ) {
-        val isRecordingActive = deckState == DeckState.RECORDING || deckState == DeckState.RECORD_ARMED || deckState == DeckState.RECORDING_PAUSED
-        val isPlayingActive = deckState == DeckState.PLAYING || deckState == DeckState.RECORDING
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+        val isRecordingActive = deckState == DeckState.RECORDING || deckState == DeckState.RECORD_ARMED ||
+                deckState == DeckState.RECORDING_PAUSED || deckState == DeckState.RECORDING_STARTING || deckState == DeckState.RECORDING_STOPPING
+        val isPlayingActive = deckState == DeckState.PLAYING || deckState == DeckState.RECORDING ||
+                deckState == DeckState.RECORDING_STARTING || deckState == DeckState.RECORDING_STOPPING
         val isRewindActive = deckState == DeckState.REWINDING
         val isFastForwardActive = deckState == DeckState.FAST_FORWARDING
         val isPauseActive = deckState == DeckState.PAUSED
@@ -76,35 +93,47 @@ fun TransportControls(
             onClick = onRecordClick,
             modifier = Modifier.weight(1f)
         ) {
-            // Red record circle dot
+            // Inset 3D ruby jewel record dot with metallic bezel ring
             Box(
                 modifier = Modifier
-                    .size(13.dp)
+                    .size(15.dp)
                     .clip(CircleShape)
-                    .background(
-                        if (isRecordingActive) {
-                            Brush.radialGradient(
-                                colors = listOf(
-                                    Color.White,
-                                    LedRecRedGlow,
-                                    LedRecRed
+                    .background(Color(0xFF1A0A0D))
+                    .border(1.dp, Color(0xFF4E1419), CircleShape)
+                    .padding(1.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(11.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (isRecordingActive) {
+                                Brush.radialGradient(
+                                    colors = listOf(
+                                        Color(0xFFFFFFFF),
+                                        Color(0xFFFF5252),
+                                        Color(0xFFD50000),
+                                        Color(0xFF8B0000)
+                                    )
                                 )
-                            )
-                        } else {
-                            Brush.radialGradient(
-                                colors = listOf(
-                                    Color(0xFFEF5350),
-                                    Color(0xFFC62828)
+                            } else {
+                                Brush.radialGradient(
+                                    colors = listOf(
+                                        Color(0xFFFF8A80),
+                                        Color(0xFFE53935),
+                                        Color(0xFFB71C1C)
+                                    )
                                 )
-                            )
-                        }
-                    )
-                    .then(
-                        if (isRecordingActive) {
-                            Modifier.border(1.5.dp, Color.White.copy(alpha = 0.8f), CircleShape)
-                        } else Modifier
-                    )
-            )
+                            }
+                        )
+                        .border(
+                            0.5.dp,
+                            if (isRecordingActive) Color.White.copy(alpha = 0.9f) else Color(0x66FFFFFF),
+                            CircleShape
+                        )
+                )
+            }
         }
 
         // 2. PLAY
@@ -196,6 +225,7 @@ fun TransportControls(
                 )
             }
         }
+        }
     }
 }
 
@@ -222,68 +252,126 @@ fun MechanicalKey(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        // Individual recessed key-well slot
         Box(
             modifier = Modifier
-                .then(if (testTag != null) Modifier.testTag(testTag) else Modifier)
                 .fillMaxWidth()
-                .height(48.dp)
-                .offset(y = pressOffset)
-                .shadow(
-                    elevation = if (isActive || isPressed) 1.dp else 5.dp,
-                    shape = RoundedCornerShape(4.dp)
-                )
+                .height(42.dp)
                 .clip(RoundedCornerShape(4.dp))
-                .background(
-                    if (isRecordKey && isActive) {
-                        Brush.verticalGradient(
-                            colors = listOf(
-                                Color(0xFF6B1D22),
-                                Color(0xFF381014)
-                            )
-                        )
-                    } else if (isActive || isPressed) {
-                        Brush.verticalGradient(
-                            colors = listOf(
-                                ButtonKeySurfacePressed,
-                                Color(0xFF15171B)
-                            )
-                        )
-                    } else {
-                        Brush.verticalGradient(
-                            colors = listOf(
-                                Color(0xFF383C45),
-                                ButtonKeySurface,
-                                Color(0xFF1E2025)
-                            )
-                        )
-                    }
-                )
-                .border(
-                    width = 1.dp,
-                    color = if (isRecordKey && isActive) Color(0xFFFF5252) else ButtonKeyBorder,
-                    shape = RoundedCornerShape(4.dp)
-                )
-                .clickable(
-                    interactionSource = interactionSource,
-                    indication = null
-                ) {
-                    view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                    onClick()
-                },
-            contentAlignment = Alignment.Center
+                .background(Color(0xFF07080A))
+                .border(0.5.dp, Color(0xFF1C1E24), RoundedCornerShape(4.dp))
+                .padding(horizontal = 0.5.dp, vertical = 1.dp),
+            contentAlignment = Alignment.TopCenter
         ) {
-            icon()
+            // Extruded Mechanical Piano Key
+            Box(
+                modifier = Modifier
+                    .then(if (testTag != null) Modifier.testTag(testTag) else Modifier)
+                    .fillMaxWidth()
+                    .height(38.dp)
+                    .offset(y = pressOffset)
+                    .shadow(
+                        elevation = if (isActive || isPressed) 1.dp else 5.dp,
+                        shape = RoundedCornerShape(3.5.dp)
+                    )
+                    .clip(RoundedCornerShape(3.5.dp))
+                    .background(
+                        if (isRecordKey && isActive) {
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color(0xFF8B1D23),
+                                    Color(0xFF5B1015),
+                                    Color(0xFF38080C)
+                                )
+                            )
+                        } else if (isActive || isPressed) {
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color(0xFF1F2228),
+                                    Color(0xFF16181C),
+                                    Color(0xFF101215)
+                                )
+                            )
+                        } else {
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color(0xFF4C525E),
+                                    Color(0xFF2E323A),
+                                    Color(0xFF22252C),
+                                    Color(0xFF181A1F)
+                                )
+                            )
+                        }
+                    )
+                    .border(
+                        width = 1.dp,
+                        brush = if (isRecordKey && isActive) {
+                            Brush.verticalGradient(listOf(Color(0xFFFF5252), Color(0xFF900C14)))
+                        } else if (isActive || isPressed) {
+                            Brush.verticalGradient(listOf(Color(0xFF3A3F49), Color(0xFF15181C)))
+                        } else {
+                            Brush.verticalGradient(listOf(Color(0xFF717A8A), Color(0xFF2C3038)))
+                        },
+                        shape = RoundedCornerShape(3.5.dp)
+                    )
+                    .clickable(
+                        interactionSource = interactionSource,
+                        indication = null
+                    ) {
+                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                        onClick()
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                // Top specular highlight line on key cap
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .height(1.dp)
+                        .align(Alignment.TopCenter)
+                        .offset(y = 1.dp)
+                        .background(
+                            Brush.horizontalGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    if (isRecordKey && isActive) Color(0xFFFF8A80) else Color(0x99A0AEC0),
+                                    Color.Transparent
+                                )
+                            )
+                        )
+                )
+
+                // Bottom tactile step shadow inside key face
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(0.92f)
+                        .height(1.dp)
+                        .align(Alignment.BottomCenter)
+                        .offset(y = (-1).dp)
+                        .background(
+                            Brush.horizontalGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    Color(0x99000000),
+                                    Color.Transparent
+                                )
+                            )
+                        )
+                )
+
+                icon()
+            }
         }
 
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(2.dp))
 
         Text(
             text = label,
-            fontSize = 8.sp,
+            fontSize = 7.5.sp,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
             softWrap = false,
-            color = if (isActive) Color(0xFFFFB300) else Color(0xFF78909C),
+            color = if (isActive) Color(0xFFFFB300) else Color(0xFF8B94A0),
             letterSpacing = 0.2.sp
         )
     }
