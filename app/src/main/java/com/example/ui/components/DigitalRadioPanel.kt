@@ -61,6 +61,7 @@ fun DigitalRadioPanel(
     isDimmed: Boolean = false,
     isTapeRunning: Boolean = false,
     isRadioPlaying: Boolean = false,
+    isSilverStyle: Boolean = false,
     onToggleRadioPlayback: () -> Unit = {},
     onPreviousStation: () -> Unit = {},
     onNextStation: () -> Unit = {},
@@ -93,10 +94,18 @@ fun DigitalRadioPanel(
         )
     }
 
-    val panelBorderBrush = if (isDimmed || isTapeRunning) {
-        Brush.verticalGradient(listOf(Color(0xFF1E2129), Color(0xFF0F1115)))
+    val panelBorderBrush = if (isSilverStyle) {
+        if (isDimmed || isTapeRunning) {
+            Brush.verticalGradient(listOf(Color(0xFF8B95A5), Color(0xFF4A5568)))
+        } else {
+            Brush.verticalGradient(listOf(Color(0xFFFFFFFF), Color(0xFFC0CAD8), Color(0xFF788395)))
+        }
     } else {
-        Brush.verticalGradient(listOf(Color(0xFF485060), Color(0xFF1F232B)))
+        if (isDimmed || isTapeRunning) {
+            Brush.verticalGradient(listOf(Color(0xFF1E2129), Color(0xFF0F1115)))
+        } else {
+            Brush.verticalGradient(listOf(Color(0xFF485060), Color(0xFF1F232B)))
+        }
     }
 
     Box(

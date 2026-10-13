@@ -9,6 +9,7 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -133,9 +134,29 @@ class AudioEngine(
     private val _vuRight = MutableStateFlow(0)
     val vuRight: StateFlow<Int> = _vuRight.asStateFlow()
 
+    private val prefs by lazy { context.getSharedPreferences("app_deck_prefs", Context.MODE_PRIVATE) }
+
+    // Cue/Review Fast-Forward & Rewind audio simulation
+    private val _isCueReviewActive = MutableStateFlow(false)
+    val isCueReviewActive: StateFlow<Boolean> = _isCueReviewActive.asStateFlow()
+
+    private val _cueReviewAudioEnabled = MutableStateFlow(
+        context.getSharedPreferences("app_deck_prefs", Context.MODE_PRIVATE).getBoolean("cue_review_audio_enabled", true)
+    )
+    val cueReviewAudioEnabled: StateFlow<Boolean> = _cueReviewAudioEnabled.asStateFlow()
+
+    fun setCueReviewAudioEnabled(enabled: Boolean) {
+        _cueReviewAudioEnabled.value = enabled
+        prefs.edit().putBoolean("cue_review_audio_enabled", enabled).apply()
+    }
+
     // Separate ExoPlayer instances for complete decoupling of Radio and Cassette Deck
     private var radioPlayer: ExoPlayer? = null
     private var tapePlayer: ExoPlayer? = null
+
+    // Authentisches analoges UKW-Zwischenstationsrauschen
+    private val fmNoisePlayer = FmNoisePlayer()
+    private var currentTunedFrequencyMhz: Float = 101.5f
 
     // Background jobs
     private var vuMeterJob: Job? = null
@@ -155,11 +176,13 @@ class AudioEngine(
     private var tapePlayStartPos = 0
     private val recordedMarkers = mutableListOf<TrackMarker>()
 
-    // Real audio amplitude tracking for 120Hz VU meter
+    // Real audio amplitude tracking from hardware PCM audio sink
     @Volatile
-    private var peakLeft = 0.0
+    private var rawAudioLevelL = 0.0
     @Volatile
-    private var peakRight = 0.0
+    private var rawAudioLevelR = 0.0
+    @Volatile
+    private var lastPcmReceivedTimestamp = 0L
 
     init {
         instance = this
@@ -169,52 +192,139 @@ class AudioEngine(
     }
 
     // Audio sink tapping PCM buffers for accurate, real audio visualization
-    private val vuAudioSink = object : TeeAudioProcessor.AudioBufferSink {
-        override fun flush(sampleRateHz: Int, channelCount: Int, encoding: Int) {}
+    private fun createAudioSinkForSource(source: PlaybackSource): TeeAudioProcessor.AudioBufferSink {
+        return object : TeeAudioProcessor.AudioBufferSink {
+            @Volatile
+            private var channelCount = 2
+            @Volatile
+            private var encoding = C.ENCODING_PCM_16BIT
 
-        override fun handleBuffer(buffer: ByteBuffer) {
-            processPcmBufferForVu(buffer)
+            override fun flush(sampleRateHz: Int, channelCount: Int, encoding: Int) {
+                this.channelCount = channelCount.coerceAtLeast(1)
+                this.encoding = encoding
+            }
+
+            override fun handleBuffer(buffer: ByteBuffer) {
+                processPcmBufferForVu(source, buffer, channelCount, encoding)
+            }
         }
     }
 
-    private fun processPcmBufferForVu(buffer: ByteBuffer) {
+    private fun processPcmBufferForVu(
+        source: PlaybackSource,
+        buffer: ByteBuffer,
+        channelCount: Int,
+        encoding: Int
+    ) {
+        // Only process audio from the currently active playback source
+        if (_playbackSource.value != source) return
         if (buffer.remaining() == 0) return
+
         try {
             val dup = buffer.asReadOnlyBuffer().order(ByteOrder.LITTLE_ENDIAN)
-            val shorts = dup.asShortBuffer()
-            val total = shorts.remaining()
-            if (total == 0) return
 
             var sumSqL = 0.0
             var sumSqR = 0.0
-            var countL = 0
-            var countR = 0
+            var maxPeakL = 0.0
+            var maxPeakR = 0.0
+            var samplePairs = 0
 
-            val step = (total / 128).coerceAtLeast(1)
-            var i = 0
-            while (i < total) {
-                val sL = shorts.get(i).toDouble() / 32768.0
-                sumSqL += sL * sL
-                countL++
-                if (i + 1 < total) {
-                    val sR = shorts.get(i + 1).toDouble() / 32768.0
-                    sumSqR += sR * sR
-                    countR++
+            if (encoding == C.ENCODING_PCM_FLOAT) {
+                val floats = dup.asFloatBuffer()
+                val total = floats.remaining()
+                if (total == 0) return
+
+                val frames = if (channelCount >= 2) total / 2 else total
+                val stepFrames = (frames / 96).coerceAtLeast(1)
+
+                var f = 0
+                if (channelCount >= 2) {
+                    while (f < frames) {
+                        val idx = f * 2
+                        if (idx + 1 < total) {
+                            val sL = floats.get(idx).toDouble().coerceIn(-1.0, 1.0)
+                            val sR = floats.get(idx + 1).toDouble().coerceIn(-1.0, 1.0)
+                            val absL = Math.abs(sL)
+                            val absR = Math.abs(sR)
+                            if (absL > maxPeakL) maxPeakL = absL
+                            if (absR > maxPeakR) maxPeakR = absR
+                            sumSqL += sL * sL
+                            sumSqR += sR * sR
+                            samplePairs++
+                        }
+                        f += stepFrames
+                    }
+                } else {
+                    while (f < frames) {
+                        val s = floats.get(f).toDouble().coerceIn(-1.0, 1.0)
+                        val absVal = Math.abs(s)
+                        if (absVal > maxPeakL) maxPeakL = absVal
+                        maxPeakR = maxPeakL
+                        sumSqL += s * s
+                        sumSqR += s * s
+                        samplePairs++
+                        f += stepFrames
+                    }
                 }
-                i += 2 * step
+            } else {
+                // Default 16-bit PCM little-endian
+                val shorts = dup.asShortBuffer()
+                val total = shorts.remaining()
+                if (total == 0) return
+
+                val frames = if (channelCount >= 2) total / 2 else total
+                val stepFrames = (frames / 96).coerceAtLeast(1)
+
+                var f = 0
+                if (channelCount >= 2) {
+                    while (f < frames) {
+                        val idx = f * 2
+                        if (idx + 1 < total) {
+                            val sL = (shorts.get(idx).toDouble() / 32768.0).coerceIn(-1.0, 1.0)
+                            val sR = (shorts.get(idx + 1).toDouble() / 32768.0).coerceIn(-1.0, 1.0)
+                            val absL = Math.abs(sL)
+                            val absR = Math.abs(sR)
+                            if (absL > maxPeakL) maxPeakL = absL
+                            if (absR > maxPeakR) maxPeakR = absR
+                            sumSqL += sL * sL
+                            sumSqR += sR * sR
+                            samplePairs++
+                        }
+                        f += stepFrames
+                    }
+                } else {
+                    while (f < frames) {
+                        val s = (shorts.get(f).toDouble() / 32768.0).coerceIn(-1.0, 1.0)
+                        val absVal = Math.abs(s)
+                        if (absVal > maxPeakL) maxPeakL = absVal
+                        maxPeakR = maxPeakL
+                        sumSqL += s * s
+                        sumSqR += s * s
+                        samplePairs++
+                        f += stepFrames
+                    }
+                }
             }
 
-            val rmsL = if (countL > 0) Math.sqrt(sumSqL / countL) else 0.0
-            val rmsR = if (countR > 0) Math.sqrt(sumSqR / countR) else 0.0
+            if (samplePairs > 0) {
+                val rmsL = Math.sqrt(sumSqL / samplePairs)
+                val rmsR = Math.sqrt(sumSqR / samplePairs)
 
-            peakLeft = Math.max(peakLeft * 0.7, rmsL)
-            peakRight = Math.max(peakRight * 0.7, rmsR)
+                // Effective signal level: weighted mix of RMS (energy) and Peak (transients)
+                val calculatedL = (0.75 * rmsL + 0.25 * maxPeakL).coerceIn(0.0, 1.0)
+                val calculatedR = (0.75 * rmsR + 0.25 * maxPeakR).coerceIn(0.0, 1.0)
+
+                // Instantaneous fast rise on fresh PCM transients
+                rawAudioLevelL = Math.max(rawAudioLevelL * 0.5, calculatedL)
+                rawAudioLevelR = Math.max(rawAudioLevelR * 0.5, calculatedR)
+                lastPcmReceivedTimestamp = System.currentTimeMillis()
+            }
         } catch (e: Exception) {
             // Buffer parsing fallback
         }
     }
 
-    private fun createPlayer(): ExoPlayer {
+    private fun createPlayer(source: PlaybackSource): ExoPlayer {
         val audioAttributes = AudioAttributes.Builder()
             .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
             .setUsage(C.USAGE_MEDIA)
@@ -229,7 +339,23 @@ class AudioEngine(
         val defaultDataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
         val mediaSourceFactory = DefaultMediaSourceFactory(defaultDataSourceFactory)
 
-        return ExoPlayer.Builder(context)
+        // Custom RenderersFactory piping actual decoded PCM audio into TeeAudioProcessor for real VU measurement
+        val renderersFactory = object : DefaultRenderersFactory(context) {
+            override fun buildAudioSink(
+                context: Context,
+                enableFloatOutput: Boolean,
+                enableAudioTrackPlaybackParams: Boolean
+            ): AudioSink? {
+                val teeProcessor = TeeAudioProcessor(createAudioSinkForSource(source))
+                return DefaultAudioSink.Builder(context)
+                    .setEnableFloatOutput(enableFloatOutput)
+                    .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                    .setAudioProcessors(arrayOf(teeProcessor))
+                    .build()
+            }
+        }
+
+        return ExoPlayer.Builder(context, renderersFactory)
             .setAudioAttributes(audioAttributes, true)
             .setMediaSourceFactory(mediaSourceFactory)
             .build()
@@ -254,7 +380,7 @@ class AudioEngine(
     private fun initPlayers() {
         try {
             // Radio player
-            radioPlayer = createPlayer().apply {
+            radioPlayer = createPlayer(PlaybackSource.RADIO).apply {
                 addListener(object : Player.Listener {
                     override fun onMediaMetadataChanged(mediaMetadata: MediaMetadata) {
                         val title = mediaMetadata.title?.toString()
@@ -335,7 +461,7 @@ class AudioEngine(
             }
 
             // Tape player
-            tapePlayer = createPlayer().apply {
+            tapePlayer = createPlayer(PlaybackSource.TAPE).apply {
                 addListener(object : Player.Listener {
                     override fun onIsPlayingChanged(isPlaying: Boolean) {
                         _isTapeAudioPlaying.value = isPlaying
@@ -378,48 +504,70 @@ class AudioEngine(
         }
     }
 
-    // High-performance ~120Hz VU Meter Engine visualizing real audio output
+    // High-performance ~120Hz VU Meter Engine visualizing real audio output from hardware PCM sink
     private fun startVuMeterEngine() {
         vuMeterJob?.cancel()
         vuMeterJob = scope.launch(Dispatchers.Default) {
-            var needleStep = 0.0
+            var currentMeterL = 0.0
+            var currentMeterR = 0.0
+
             while (isActive) {
                 delay(8) // ~120Hz update loop (every 8.3ms)
+
                 val isRadioAudio = _playbackSource.value == PlaybackSource.RADIO && _isRadioPlaying.value
                 val isTapeAudio = _playbackSource.value == PlaybackSource.TAPE &&
                         _deckState.value == DeckState.PLAYING &&
                         _isTapeAudioPlaying.value
                 val isAudioActivelyPlaying = isRadioAudio || isTapeAudio
 
-                if (isAudioActivelyPlaying) {
-                    peakLeft *= 0.94
-                    peakRight *= 0.94
-                    if (peakLeft < 0.08) {
-                        needleStep += 0.15
-                        val bounceL = 0.12 + 0.08 * Math.sin(needleStep)
-                        val bounceR = 0.11 + 0.07 * Math.cos(needleStep * 1.3)
-                        peakLeft = Math.max(peakLeft, bounceL)
-                        peakRight = Math.max(peakRight, bounceR)
+                val now = System.currentTimeMillis()
+                val hasRecentPcm = (now - lastPcmReceivedTimestamp) < 350L
+
+                if (isAudioActivelyPlaying && hasRecentPcm) {
+                    val targetL = rawAudioLevelL
+                    val targetR = rawAudioLevelR
+
+                    // Analog needle physics (VU ballistics):
+                    // Fast rise time (~20ms) on transient spikes, smooth mechanical release (~250ms)
+                    if (targetL > currentMeterL) {
+                        currentMeterL += (targetL - currentMeterL) * 0.42
+                    } else {
+                        currentMeterL += (targetL - currentMeterL) * 0.10
                     }
-                    _vuLeft.value = rmsToBars(peakLeft)
-                    _vuRight.value = rmsToBars(peakRight)
+
+                    if (targetR > currentMeterR) {
+                        currentMeterR += (targetR - currentMeterR) * 0.42
+                    } else {
+                        currentMeterR += (targetR - currentMeterR) * 0.10
+                    }
+
+                    // Gently decay raw target envelope so quiet passages drop immediately
+                    rawAudioLevelL *= 0.91
+                    rawAudioLevelR *= 0.91
+
+                    _vuLeft.value = rmsToBars(currentMeterL)
+                    _vuRight.value = rmsToBars(currentMeterR)
                 } else {
-                    peakLeft *= 0.70
-                    peakRight *= 0.70
-                    if (peakLeft < 0.005) peakLeft = 0.0
-                    if (peakRight < 0.005) peakRight = 0.0
-                    _vuLeft.value = rmsToBars(peakLeft)
-                    _vuRight.value = rmsToBars(peakRight)
+                    // Quick decay to zero when stopped, paused or buffering
+                    currentMeterL *= 0.72
+                    currentMeterR *= 0.72
+                    if (currentMeterL < 0.002) currentMeterL = 0.0
+                    if (currentMeterR < 0.002) currentMeterR = 0.0
+                    rawAudioLevelL = 0.0
+                    rawAudioLevelR = 0.0
+
+                    _vuLeft.value = rmsToBars(currentMeterL)
+                    _vuRight.value = rmsToBars(currentMeterR)
                 }
             }
         }
     }
 
     private fun rmsToBars(rms: Double): Int {
-        if (rms <= 0.008) return 0
-        // Decibel range mapping ~ -40dB .. 0dB to 1..16 bars
-        val db = 20.0 * Math.log10(rms.coerceIn(0.008, 1.0))
-        val fraction = ((db + 40.0) / 40.0).coerceIn(0.0, 1.0)
+        if (rms <= 0.004) return 0
+        // Decibel range mapping ~ -42dB .. 0dB mapped smoothly to 1..16 bars
+        val db = 20.0 * Math.log10(rms.coerceIn(0.004, 1.0))
+        val fraction = ((db + 42.0) / 42.0).coerceIn(0.0, 1.0)
         return Math.round(fraction * 16.0).toInt().coerceIn(0, 16)
     }
 
@@ -632,6 +780,7 @@ class AudioEngine(
 
     fun stopRadio() {
         _isRadioPlaying.value = false
+        fmNoisePlayer.setVolume(0.0f)
         try {
             radioPlayer?.stop()
             radioPlayer?.clearMediaItems()
@@ -640,6 +789,59 @@ class AudioEngine(
         }
         if (_deckState.value != DeckState.PLAYING) {
             safeStopPlaybackService()
+        }
+    }
+
+    /**
+     * Wird aufgerufen, wenn der Nutzer an der analogen UKW-Skala oder am Frequenz-Slider dreht/schiebt.
+     *
+     * Ermittelt den Abstand zur nächsten Senderfrequenz:
+     * - Ist der Abstand groß (Sendelücke) und Radio aktiv, ertönt authentisches UKW-Rauschen (sofern FM-Muting aus ist).
+     * - Erreicht der Zeiger einen Sender (< 0.12 MHz Toleranz), blendet das Rauschen sofort aus und der Sender spielt klar.
+     * - Ist FM-Muting aktiv, bleibt das Band in Lücken stumm (reines digitales Tuning).
+     */
+    fun updateTuningFrequency(
+        frequencyMhz: Float,
+        stationPool: List<RadioStation>,
+        isFmMutingEnabled: Boolean
+    ) {
+        currentTunedFrequencyMhz = frequencyMhz
+
+        // Rauschen nur abspielen, wenn wir uns im RADIO-Modus befinden und das Radio eingeschaltet ist
+        if (_playbackSource.value != PlaybackSource.RADIO || !_isRadioPlaying.value || isFmMutingEnabled) {
+            fmNoisePlayer.setVolume(0.0f)
+            radioPlayer?.volume = 1.0f
+            return
+        }
+
+        if (stationPool.isEmpty()) {
+            fmNoisePlayer.setVolume(0.85f)
+            radioPlayer?.volume = 0.0f
+            return
+        }
+
+        // Finde den nächstgelegenen Sender im aktuellen Pool
+        val closest = stationPool.minByOrNull { Math.abs(it.dialFrequencyMhz - frequencyMhz) }
+        val distance = if (closest != null) Math.abs(closest.dialFrequencyMhz - frequencyMhz) else 10.0f
+
+        // Schwellenwerte für analogen Empfang:
+        // <= 0.08 MHz: Perfekt abgestimmt -> 100% Sender, 0% Rauschen
+        // 0.08 .. 0.25 MHz: Übergangszone -> weicher Crossfade
+        // > 0.25 MHz: Reines Zwischenrauschen -> 100% Rauschen, Sender stummgeschaltet
+        when {
+            distance <= 0.08f -> {
+                fmNoisePlayer.setVolume(0.0f)
+                radioPlayer?.volume = 1.0f
+            }
+            distance in 0.08f..0.25f -> {
+                val ratio = ((distance - 0.08f) / (0.25f - 0.08f)).coerceIn(0.0f, 1.0f)
+                fmNoisePlayer.setVolume(ratio * 0.85f)
+                radioPlayer?.volume = (1.0f - ratio)
+            }
+            else -> {
+                fmNoisePlayer.setVolume(0.85f)
+                radioPlayer?.volume = 0.0f
+            }
         }
     }
 
@@ -1195,13 +1397,22 @@ class AudioEngine(
     fun onFastForwardPress() {
         if (_activeTape.value == null || _deckState.value == DeckState.EJECTED) return
         if (_deckState.value == DeckState.FAST_FORWARDING) {
+            val wasCue = _isCueReviewActive.value
             stopSpooling()
+            if (wasCue) {
+                executeTapePlay()
+            }
             return
         }
         if (_deckState.value == DeckState.RECORDING || _deckState.value == DeckState.RECORD_ARMED) {
             return
         }
-        tapePlayer?.pause()
+
+        // Cue mode is engaged ONLY if tape was actively PLAYING in TAPE mode and option is enabled!
+        val wasPlaying = (_deckState.value == DeckState.PLAYING && _playbackSource.value == PlaybackSource.TAPE)
+        val shouldCue = wasPlaying && _cueReviewAudioEnabled.value && _activeTape.value != null
+
+        _isCueReviewActive.value = shouldCue
         _deckState.value = DeckState.FAST_FORWARDING
 
         val maxCap = getTapeEndPositionSec()
@@ -1211,16 +1422,54 @@ class AudioEngine(
         }
 
         spoolJob?.cancel()
-        spoolJob = scope.launch {
-            while (isActive && _deckState.value == DeckState.FAST_FORWARDING) {
-                delay(100)
-                val nextPos = (_tapePositionSec.value + 6).coerceAtMost(maxCap)
-                _tapePositionSec.value = nextPos
-                _tapeCounter.value = (nextPos / 2).coerceIn(0, 999)
+        if (shouldCue) {
+            // CUE: Real 3x fast-forward audio with authentic analog pitch increase (chipmunk effect)
+            tapePlayer?.let { player ->
+                try {
+                    player.playbackParameters = PlaybackParameters(3.0f, 3.0f)
+                    player.play()
+                } catch (e: Exception) {
+                    Log.e("AudioEngine", "Error setting cue playback parameters", e)
+                }
+            }
+            spoolJob = scope.launch {
+                while (isActive && _deckState.value == DeckState.FAST_FORWARDING) {
+                    delay(80)
+                    val playerDur = tapePlayer?.duration ?: C.TIME_UNSET
+                    val hasActiveMedia = (playerDur > 0L && playerDur != C.TIME_UNSET)
+                    val nextSec = if (hasActiveMedia) {
+                        val curMs = tapePlayer?.currentPosition ?: (_tapePositionSec.value * 1000L)
+                        (curMs / 1000L).toInt().coerceIn(0, maxCap)
+                    } else {
+                        (_tapePositionSec.value + 3).coerceAtMost(maxCap)
+                    }
+                    _tapePositionSec.value = nextSec
+                    _tapeCounter.value = (nextSec / 2).coerceIn(0, 999)
 
-                if (nextPos >= maxCap) {
-                    stopSpooling()
-                    break
+                    if (nextSec >= maxCap || tapePlayer?.playbackState == Player.STATE_ENDED) {
+                        stopSpooling()
+                        break
+                    }
+                }
+            }
+        } else {
+            // Silent spooling (e.g. from STOP or PAUSED)
+            tapePlayer?.pause()
+            try {
+                tapePlayer?.playbackParameters = PlaybackParameters(1.0f, 1.0f)
+            } catch (_: Exception) {}
+
+            spoolJob = scope.launch {
+                while (isActive && _deckState.value == DeckState.FAST_FORWARDING) {
+                    delay(100)
+                    val nextPos = (_tapePositionSec.value + 6).coerceAtMost(maxCap)
+                    _tapePositionSec.value = nextPos
+                    _tapeCounter.value = (nextPos / 2).coerceIn(0, 999)
+
+                    if (nextPos >= maxCap) {
+                        stopSpooling()
+                        break
+                    }
                 }
             }
         }
@@ -1229,13 +1478,22 @@ class AudioEngine(
     fun onRewindPress() {
         if (_activeTape.value == null || _deckState.value == DeckState.EJECTED) return
         if (_deckState.value == DeckState.REWINDING) {
+            val wasReview = _isCueReviewActive.value
             stopSpooling()
+            if (wasReview) {
+                executeTapePlay()
+            }
             return
         }
         if (_deckState.value == DeckState.RECORDING || _deckState.value == DeckState.RECORD_ARMED) {
             return
         }
-        tapePlayer?.pause()
+
+        // Review mode is engaged ONLY if tape was actively PLAYING in TAPE mode and option is enabled!
+        val wasPlaying = (_deckState.value == DeckState.PLAYING && _playbackSource.value == PlaybackSource.TAPE)
+        val shouldReview = wasPlaying && _cueReviewAudioEnabled.value && _activeTape.value != null
+
+        _isCueReviewActive.value = shouldReview
         _deckState.value = DeckState.REWINDING
 
         if (_tapePositionSec.value <= 0) {
@@ -1246,18 +1504,55 @@ class AudioEngine(
         }
 
         spoolJob?.cancel()
-        spoolJob = scope.launch {
-            while (isActive && _deckState.value == DeckState.REWINDING) {
-                delay(100)
-                val nextPos = (_tapePositionSec.value - 6).coerceAtLeast(0)
-                _tapePositionSec.value = nextPos
-                _tapeCounter.value = (nextPos / 2).coerceIn(0, 999)
+        if (shouldReview) {
+            // REVIEW: Reverse scanning chunks with 3x speed & 3x pitch
+            try {
+                tapePlayer?.playbackParameters = PlaybackParameters(3.0f, 3.0f)
+            } catch (_: Exception) {}
 
-                if (nextPos <= 0) {
-                    _tapePositionSec.value = 0
-                    _tapeCounter.value = 0
-                    stopSpooling()
-                    break
+            spoolJob = scope.launch {
+                while (isActive && _deckState.value == DeckState.REWINDING) {
+                    val currentMs = tapePlayer?.currentPosition ?: (_tapePositionSec.value * 1000L)
+                    val targetMs = (currentMs - 800L).coerceAtLeast(0L)
+                    try {
+                        tapePlayer?.seekTo(targetMs)
+                        tapePlayer?.play()
+                    } catch (_: Exception) {}
+
+                    delay(100)
+
+                    val newSec = (targetMs / 1000L).toInt().coerceAtLeast(0)
+                    _tapePositionSec.value = newSec
+                    _tapeCounter.value = (newSec / 2).coerceIn(0, 999)
+
+                    if (targetMs <= 0L) {
+                        _tapePositionSec.value = 0
+                        _tapeCounter.value = 0
+                        stopSpooling()
+                        break
+                    }
+                }
+            }
+        } else {
+            // Silent rewind (e.g. from STOP or PAUSED)
+            tapePlayer?.pause()
+            try {
+                tapePlayer?.playbackParameters = PlaybackParameters(1.0f, 1.0f)
+            } catch (_: Exception) {}
+
+            spoolJob = scope.launch {
+                while (isActive && _deckState.value == DeckState.REWINDING) {
+                    delay(100)
+                    val nextPos = (_tapePositionSec.value - 6).coerceAtLeast(0)
+                    _tapePositionSec.value = nextPos
+                    _tapeCounter.value = (nextPos / 2).coerceIn(0, 999)
+
+                    if (nextPos <= 0) {
+                        _tapePositionSec.value = 0
+                        _tapeCounter.value = 0
+                        stopSpooling()
+                        break
+                    }
                 }
             }
         }
@@ -1266,12 +1561,17 @@ class AudioEngine(
     fun stopSpooling() {
         spoolJob?.cancel()
         spoolJob = null
+        _isCueReviewActive.value = false
+        try {
+            tapePlayer?.playbackParameters = PlaybackParameters(1.0f, 1.0f)
+        } catch (_: Exception) {}
         tapePlayStartPos = _tapePositionSec.value
         tapePlayStartTime = System.currentTimeMillis()
         if (_deckState.value == DeckState.FAST_FORWARDING || _deckState.value == DeckState.REWINDING) {
             _deckState.value = DeckState.PAUSED
             if (_playbackSource.value == PlaybackSource.TAPE && tapePlayer != null) {
                 try {
+                    tapePlayer?.pause()
                     tapePlayer?.seekTo((_tapePositionSec.value * 1000L).coerceAtLeast(0L))
                 } catch (e: Exception) {
                     // ignore

@@ -27,11 +27,19 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.theme.ShareTechMonoFontFamily
+import com.example.util.HapticUtils
+import kotlin.math.roundToInt
 
 /**
  * Vintage Hi-Fi Analog Frequency Slider Control.
@@ -50,10 +58,25 @@ fun FrequencySlider(
     onFrequencyChange: (Float) -> Unit,
     modifier: Modifier = Modifier,
     isDimmed: Boolean = false,
+    isSilverStyle: Boolean = false,
     minFreq: Float = 88.0f,
     maxFreq: Float = 108.0f
 ) {
-    val labelColor = Color(0xFF8E95A2)
+    val labelColor = if (isSilverStyle) Color(0xFF263238) else Color(0xFF8E95A2)
+
+    val context = LocalContext.current
+    val view = LocalView.current
+    var lastDetentIndex by remember { mutableIntStateOf((currentFrequencyMhz * 10f).roundToInt()) }
+
+    fun updateFrequencyWithHaptics(newFreq: Float) {
+        val clamped = newFreq.coerceIn(minFreq, maxFreq)
+        val detent = (clamped * 10f).roundToInt()
+        if (detent != lastDetentIndex) {
+            lastDetentIndex = detent
+            HapticUtils.performSliderTick(context, view)
+        }
+        onFrequencyChange(clamped)
+    }
 
     // Outer bezel tray (permanent physical hardware slider, always fully visible with 3D beveled frame)
     Box(
@@ -64,17 +87,29 @@ fun FrequencySlider(
             .clip(RoundedCornerShape(6.dp))
             .background(
                 Brush.verticalGradient(
-                    colors = listOf(
-                        Color(0xFF20232B),
-                        Color(0xFF14161B),
-                        Color(0xFF0C0E11)
-                    )
+                    colors = if (isSilverStyle) {
+                        listOf(
+                            Color(0xFFE8ECF2),
+                            Color(0xFFD2D9E5),
+                            Color(0xFFBCC5D4)
+                        )
+                    } else {
+                        listOf(
+                            Color(0xFF20232B),
+                            Color(0xFF14161B),
+                            Color(0xFF0C0E11)
+                        )
+                    }
                 )
             )
             .border(
                 1.dp,
                 Brush.verticalGradient(
-                    colors = listOf(Color(0xFF454B58), Color(0xFF1D2028))
+                    colors = if (isSilverStyle) {
+                        listOf(Color(0xFFFFFFFF), Color(0xFF8B95A5))
+                    } else {
+                        listOf(Color(0xFF454B58), Color(0xFF1D2028))
+                    }
                 ),
                 RoundedCornerShape(6.dp)
             )
@@ -117,7 +152,7 @@ fun FrequencySlider(
                             val usableWidth = (size.width - thumbW).coerceAtLeast(1f)
                             val fraction = ((offset.x - thumbW / 2f) / usableWidth).coerceIn(0f, 1f)
                             val newFreq = minFreq + fraction * (maxFreq - minFreq)
-                            onFrequencyChange(newFreq)
+                            updateFrequencyWithHaptics(newFreq)
                         }
                     }
                     .pointerInput(Unit) {
@@ -127,14 +162,15 @@ fun FrequencySlider(
                                 val usableWidth = (size.width - thumbW).coerceAtLeast(1f)
                                 val fraction = ((offset.x - thumbW / 2f) / usableWidth).coerceIn(0f, 1f)
                                 val newFreq = minFreq + fraction * (maxFreq - minFreq)
-                                onFrequencyChange(newFreq)
+                                updateFrequencyWithHaptics(newFreq)
                             },
                             onDrag = { change, _ ->
+                                change.consume()
                                 val thumbW = 32.dp.toPx()
                                 val usableWidth = (size.width - thumbW).coerceAtLeast(1f)
                                 val fraction = ((change.position.x - thumbW / 2f) / usableWidth).coerceIn(0f, 1f)
                                 val newFreq = minFreq + fraction * (maxFreq - minFreq)
-                                onFrequencyChange(newFreq)
+                                updateFrequencyWithHaptics(newFreq)
                             }
                         )
                     }

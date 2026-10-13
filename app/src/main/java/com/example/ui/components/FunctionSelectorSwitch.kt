@@ -59,7 +59,8 @@ import com.example.model.PlaybackSource
 fun FunctionSelectorSwitch(
     currentSource: PlaybackSource,
     onSourceChanged: (PlaybackSource) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isSilverStyle: Boolean = false
 ) {
     val view = LocalView.current
     val isRadio = currentSource == PlaybackSource.RADIO
@@ -93,7 +94,7 @@ fun FunctionSelectorSwitch(
             text = "SOURCE",
             fontSize = 9.sp,
             fontWeight = FontWeight.Bold,
-            color = Color(0xFF90A4AE),
+            color = if (isSilverStyle) Color(0xFF263238) else Color(0xFF90A4AE),
             letterSpacing = 0.5.sp,
             modifier = Modifier.padding(bottom = 2.dp)
         )
@@ -106,20 +107,35 @@ fun FunctionSelectorSwitch(
                 .clip(RoundedCornerShape(6.dp))
                 .background(
                     Brush.verticalGradient(
-                        colors = listOf(
-                            Color(0xFF22252C),
-                            Color(0xFF14161A),
-                            Color(0xFF0C0D10)
-                        )
+                        colors = if (isSilverStyle) {
+                            listOf(
+                                Color(0xFFE8ECF2),
+                                Color(0xFFD0D7E4),
+                                Color(0xFFBAC3D2)
+                            )
+                        } else {
+                            listOf(
+                                Color(0xFF22252C),
+                                Color(0xFF14161A),
+                                Color(0xFF0C0D10)
+                            )
+                        }
                     )
                 )
                 .border(
                     width = 1.dp,
                     brush = Brush.verticalGradient(
-                        colors = listOf(
-                            Color(0xFF484E5B),
-                            Color(0xFF1D2026)
-                        )
+                        colors = if (isSilverStyle) {
+                            listOf(
+                                Color(0xFFFFFFFF),
+                                Color(0xFF8B95A5)
+                            )
+                        } else {
+                            listOf(
+                                Color(0xFF484E5B),
+                                Color(0xFF1D2026)
+                            )
+                        }
                     ),
                     shape = RoundedCornerShape(6.dp)
                 )

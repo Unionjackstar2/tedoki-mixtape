@@ -8,6 +8,13 @@ enum class RecordingMode {
     CLIPS       // Automatisch in einzelne Clips schneiden
 }
 
+enum class RadioLayoutMode {
+    PORTRAIT,           // Klassisches Kassettendeck (Hochformat - Anthrazit)
+    PORTRAIT_ALUMINUM,  // Hi-Fi Kassettendeck (Silber gebürstetes Aluminium Hochformat)
+    LANDSCAPE,          // Hi-Fi Radiorekorder / Ghettoblaster (Querformat)
+    TRANSISTOR          // Vintage Transistorradio (Querformat ohne Kassettendeck)
+}
+
 enum class PlaybackSource {
     RADIO,
     TAPE

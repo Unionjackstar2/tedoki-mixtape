@@ -37,6 +37,7 @@ fun VuMeterAndCounter(
     counterValue: Int,
     vuLeft: Int,
     vuRight: Int,
+    isSilverStyle: Boolean = false,
     onResetCounter: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -50,6 +51,7 @@ fun VuMeterAndCounter(
         // Mechanical Odometer Counter Box: [ 0 0 0 ]
         MechanicalTapeCounter(
             value = counterValue,
+            isSilverStyle = isSilverStyle,
             onReset = onResetCounter
         )
 
@@ -59,6 +61,7 @@ fun VuMeterAndCounter(
         DualVuMeter(
             levelLeft = vuLeft,
             levelRight = vuRight,
+            isSilverStyle = isSilverStyle,
             modifier = Modifier.weight(1f)
         )
     }
@@ -68,6 +71,7 @@ fun VuMeterAndCounter(
 fun MechanicalTapeCounter(
     value: Int,
     modifier: Modifier = Modifier,
+    isSilverStyle: Boolean = false,
     onReset: (() -> Unit)? = null
 ) {
     val padded = String.format("%03d", value.coerceIn(0, 999))
@@ -79,13 +83,21 @@ fun MechanicalTapeCounter(
             .clip(RoundedCornerShape(5.dp))
             .background(
                 Brush.verticalGradient(
-                    colors = listOf(Color(0xFF1F2228), Color(0xFF121417), Color(0xFF0B0C0E))
+                    colors = if (isSilverStyle) {
+                        listOf(Color(0xFFE8ECF2), Color(0xFFD0D7E4), Color(0xFFBAC3D2))
+                    } else {
+                        listOf(Color(0xFF1F2228), Color(0xFF121417), Color(0xFF0B0C0E))
+                    }
                 )
             )
             .border(
                 1.5.dp,
                 Brush.verticalGradient(
-                    colors = listOf(Color(0xFF4C525E), Color(0xFF1E2128))
+                    colors = if (isSilverStyle) {
+                        listOf(Color(0xFFFFFFFF), Color(0xFF8B95A5))
+                    } else {
+                        listOf(Color(0xFF4C525E), Color(0xFF1E2128))
+                    }
                 ),
                 RoundedCornerShape(5.dp)
             )
@@ -175,6 +187,7 @@ fun MechanicalTapeCounter(
 fun DualVuMeter(
     levelLeft: Int,
     levelRight: Int,
+    isSilverStyle: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -193,7 +206,11 @@ fun DualVuMeter(
             .border(
                 1.5.dp,
                 Brush.verticalGradient(
-                    colors = listOf(Color(0xFF3E4552), Color(0xFF1C1F26))
+                    colors = if (isSilverStyle) {
+                        listOf(Color(0xFFFFFFFF), Color(0xFF8B95A5))
+                    } else {
+                        listOf(Color(0xFF3E4552), Color(0xFF1C1F26))
+                    }
                 ),
                 RoundedCornerShape(5.dp)
             )

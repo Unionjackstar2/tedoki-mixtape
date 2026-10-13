@@ -89,6 +89,7 @@ fun CassetteDoorCompartment(
     onOpenCustomizer: (Cassette) -> Unit,
     onOpenDetail: ((Cassette) -> Unit)?,
     onInsertTape: () -> Unit,
+    isSilverStyle: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     // Smooth eject animation for door tilt and cassette lift
@@ -116,13 +117,21 @@ fun CassetteDoorCompartment(
             .clip(RoundedCornerShape(8.dp))
             .background(
                 Brush.verticalGradient(
-                    colors = listOf(Color(0xFF1A1D24), Color(0xFF0E1014), Color(0xFF07080A))
+                    colors = if (isSilverStyle) {
+                        listOf(Color(0xFFE2E7F0), Color(0xFFC8D0DE), Color(0xFFAAB3C2))
+                    } else {
+                        listOf(Color(0xFF1A1D24), Color(0xFF0E1014), Color(0xFF07080A))
+                    }
                 )
             )
             .border(
                 2.dp,
                 Brush.verticalGradient(
-                    colors = listOf(Color(0xFF4F5666), Color(0xFF1D2028))
+                    colors = if (isSilverStyle) {
+                        listOf(Color(0xFFFFFFFF), Color(0xFFCBD2DE), Color(0xFF7E8896))
+                    } else {
+                        listOf(Color(0xFF4F5666), Color(0xFF1D2028))
+                    }
                 ),
                 RoundedCornerShape(8.dp)
             )
@@ -261,7 +270,11 @@ fun CassetteDoorCompartment(
                     val topBarH = h * 0.08f
                     drawRoundRect(
                         brush = Brush.verticalGradient(
-                            colors = listOf(Color(0xFF2E323A), Color(0xFF1B1D22), Color(0xFF15171B))
+                            colors = if (isSilverStyle) {
+                                listOf(Color(0xFFF0F4F8), Color(0xFFD6DCE6), Color(0xFFBAC3D1))
+                            } else {
+                                listOf(Color(0xFF2E323A), Color(0xFF1B1D22), Color(0xFF15171B))
+                            }
                         ),
                         topLeft = Offset(0f, 0f),
                         size = Size(w, topBarH),
@@ -269,7 +282,7 @@ fun CassetteDoorCompartment(
                     )
                     // Top highlight bevel line
                     drawLine(
-                        color = Color(0xFF4F5666),
+                        color = if (isSilverStyle) Color(0xFFFFFFFF) else Color(0xFF4F5666),
                         start = Offset(2.dp.toPx(), 1.dp.toPx()),
                         end = Offset(w - 2.dp.toPx(), 1.dp.toPx()),
                         strokeWidth = 1.2.dp.toPx()
@@ -280,7 +293,11 @@ fun CassetteDoorCompartment(
                     val bottomBarY = h - bottomBarH
                     drawRoundRect(
                         brush = Brush.verticalGradient(
-                            colors = listOf(Color(0xFF1A1C20), Color(0xFF262930), Color(0xFF141619))
+                            colors = if (isSilverStyle) {
+                                listOf(Color(0xFFE4E8F0), Color(0xFFCAD1DE), Color(0xFFAAB4C4))
+                            } else {
+                                listOf(Color(0xFF1A1C20), Color(0xFF262930), Color(0xFF141619))
+                            }
                         ),
                         topLeft = Offset(0f, bottomBarY),
                         size = Size(w, bottomBarH),
@@ -288,13 +305,13 @@ fun CassetteDoorCompartment(
                     )
                     // Bottom bar top chamfer line
                     drawLine(
-                        color = Color(0xFF3E4452),
+                        color = if (isSilverStyle) Color(0xFFFFFFFF) else Color(0xFF3E4452),
                         start = Offset(0f, bottomBarY),
                         end = Offset(w, bottomBarY),
                         strokeWidth = 1.5.dp.toPx()
                     )
                     drawLine(
-                        color = Color(0xFF0A0C0E),
+                        color = if (isSilverStyle) Color(0xFF8B94A4) else Color(0xFF0A0C0E),
                         start = Offset(0f, bottomBarY + 1.5.dp.toPx()),
                         end = Offset(w, bottomBarY + 1.5.dp.toPx()),
                         strokeWidth = 1.dp.toPx()
@@ -304,14 +321,22 @@ fun CassetteDoorCompartment(
                     val sideBarW = w * 0.055f
                     drawRect(
                         brush = Brush.horizontalGradient(
-                            colors = listOf(Color(0xFF2B2F38), Color(0xFF181A1F))
+                            colors = if (isSilverStyle) {
+                                listOf(Color(0xFFD6DBE5), Color(0xFFC0C7D5))
+                            } else {
+                                listOf(Color(0xFF2B2F38), Color(0xFF181A1F))
+                            }
                         ),
                         topLeft = Offset(0f, topBarH),
                         size = Size(sideBarW, bottomBarY - topBarH)
                     )
                     drawRect(
                         brush = Brush.horizontalGradient(
-                            colors = listOf(Color(0xFF181A1F), Color(0xFF2B2F38))
+                            colors = if (isSilverStyle) {
+                                listOf(Color(0xFFC0C7D5), Color(0xFFD6DBE5))
+                            } else {
+                                listOf(Color(0xFF181A1F), Color(0xFF2B2F38))
+                            }
                         ),
                         topLeft = Offset(w - sideBarW, topBarH),
                         size = Size(sideBarW, bottomBarY - topBarH)

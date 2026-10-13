@@ -51,6 +51,8 @@ fun TransportControls(
     onFastForwardClick: () -> Unit,
     onPauseClick: () -> Unit,
     onEjectClick: () -> Unit,
+    isSilverStyle: Boolean = false,
+    isCueReviewActive: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     // Recessed keyboard well tray with bevelled edge
@@ -60,14 +62,22 @@ fun TransportControls(
             .clip(RoundedCornerShape(6.dp))
             .background(
                 Brush.verticalGradient(
-                    colors = listOf(
-                        Color(0xFF0C0D10),
-                        Color(0xFF131519),
-                        Color(0xFF0F1014)
-                    )
+                    colors = if (isSilverStyle) {
+                        listOf(Color(0xFF262C36), Color(0xFF1B1F27), Color(0xFF13171F))
+                    } else {
+                        listOf(
+                            Color(0xFF0C0D10),
+                            Color(0xFF131519),
+                            Color(0xFF0F1014)
+                        )
+                    }
                 )
             )
-            .border(1.5.dp, Color(0xFF262A33), RoundedCornerShape(6.dp))
+            .border(
+                1.5.dp,
+                if (isSilverStyle) Color(0xFF8B95A5) else Color(0xFF262A33),
+                RoundedCornerShape(6.dp)
+            )
             .padding(horizontal = 5.dp, vertical = 4.dp)
     ) {
         Row(
@@ -78,7 +88,8 @@ fun TransportControls(
         val isRecordingActive = deckState == DeckState.RECORDING || deckState == DeckState.RECORD_ARMED ||
                 deckState == DeckState.RECORDING_PAUSED || deckState == DeckState.RECORDING_STARTING || deckState == DeckState.RECORDING_STOPPING
         val isPlayingActive = deckState == DeckState.PLAYING || deckState == DeckState.RECORDING ||
-                deckState == DeckState.RECORDING_STARTING || deckState == DeckState.RECORDING_STOPPING
+                deckState == DeckState.RECORDING_STARTING || deckState == DeckState.RECORDING_STOPPING ||
+                (isCueReviewActive && (deckState == DeckState.FAST_FORWARDING || deckState == DeckState.REWINDING))
         val isRewindActive = deckState == DeckState.REWINDING
         val isFastForwardActive = deckState == DeckState.FAST_FORWARDING
         val isPauseActive = deckState == DeckState.PAUSED
@@ -89,6 +100,7 @@ fun TransportControls(
             label = "RECORD",
             isActive = isRecordingActive,
             isRecordKey = true,
+            isSilverStyle = isSilverStyle,
             testTag = "transport_record",
             onClick = onRecordClick,
             modifier = Modifier.weight(1f)
@@ -140,6 +152,7 @@ fun TransportControls(
         MechanicalKey(
             label = "PLAY",
             isActive = isPlayingActive,
+            isSilverStyle = isSilverStyle,
             testTag = "transport_play",
             onClick = onPlayClick,
             modifier = Modifier.weight(1f)
@@ -147,14 +160,15 @@ fun TransportControls(
             Text(
                 text = "▶",
                 fontSize = 14.sp,
-                color = if (isPlayingActive) Color(0xFFFFB300) else ButtonKeyText
+                color = if (isPlayingActive) Color(0xFFFFB300) else if (isSilverStyle) Color(0xFF1B202A) else ButtonKeyText
             )
         }
 
         // 3. REWIND (◄◄)
         MechanicalKey(
-            label = "REW",
+            label = if (isCueReviewActive && isRewindActive) "REVIEW" else "REW",
             isActive = isRewindActive,
+            isSilverStyle = isSilverStyle,
             testTag = "transport_rewind",
             onClick = onRewindClick,
             modifier = Modifier.weight(1f)
@@ -163,14 +177,15 @@ fun TransportControls(
                 text = "◄◄",
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
-                color = if (isRewindActive) Color(0xFFFFB300) else ButtonKeyText
+                color = if (isRewindActive) Color(0xFFFFB300) else if (isSilverStyle) Color(0xFF1B202A) else ButtonKeyText
             )
         }
 
         // 4. FAST FORWARD (►►)
         MechanicalKey(
-            label = "F.FWD",
+            label = if (isCueReviewActive && isFastForwardActive) "CUE" else "F.FWD",
             isActive = isFastForwardActive,
+            isSilverStyle = isSilverStyle,
             testTag = "transport_fast_forward",
             onClick = onFastForwardClick,
             modifier = Modifier.weight(1f)
@@ -179,7 +194,7 @@ fun TransportControls(
                 text = "►►",
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
-                color = if (isFastForwardActive) Color(0xFFFFB300) else ButtonKeyText
+                color = if (isFastForwardActive) Color(0xFFFFB300) else if (isSilverStyle) Color(0xFF1B202A) else ButtonKeyText
             )
         }
 
@@ -187,6 +202,7 @@ fun TransportControls(
         MechanicalKey(
             label = "PAUSE",
             isActive = isPauseActive,
+            isSilverStyle = isSilverStyle,
             testTag = "transport_pause",
             onClick = onPauseClick,
             modifier = Modifier.weight(1f)
@@ -195,7 +211,7 @@ fun TransportControls(
                 text = "❚❚",
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
-                color = if (isPauseActive) Color(0xFFFFB300) else ButtonKeyText
+                color = if (isPauseActive) Color(0xFFFFB300) else if (isSilverStyle) Color(0xFF1B202A) else ButtonKeyText
             )
         }
 
@@ -203,6 +219,7 @@ fun TransportControls(
         MechanicalKey(
             label = "STOP / EJECT",
             isActive = isEjectActive,
+            isSilverStyle = isSilverStyle,
             testTag = "transport_eject",
             onClick = onEjectClick,
             modifier = Modifier.weight(1.1f)
@@ -215,13 +232,13 @@ fun TransportControls(
                     text = "■",
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
-                    color = ButtonKeyText
+                    color = if (isSilverStyle) Color(0xFF1B202A) else ButtonKeyText
                 )
                 Text(
                     text = "⏏",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
-                    color = ButtonKeyText
+                    color = if (isSilverStyle) Color(0xFF1B202A) else ButtonKeyText
                 )
             }
         }
@@ -235,6 +252,7 @@ fun MechanicalKey(
     isActive: Boolean,
     modifier: Modifier = Modifier,
     isRecordKey: Boolean = false,
+    isSilverStyle: Boolean = false,
     testTag: String? = null,
     onClick: () -> Unit,
     icon: @Composable () -> Unit
@@ -285,22 +303,43 @@ fun MechanicalKey(
                                 )
                             )
                         } else if (isActive || isPressed) {
-                            Brush.verticalGradient(
-                                colors = listOf(
-                                    Color(0xFF1F2228),
-                                    Color(0xFF16181C),
-                                    Color(0xFF101215)
+                            if (isSilverStyle) {
+                                Brush.verticalGradient(
+                                    colors = listOf(
+                                        Color(0xFFB8C1CF),
+                                        Color(0xFF9EA7B5),
+                                        Color(0xFF858E9B)
+                                    )
                                 )
-                            )
+                            } else {
+                                Brush.verticalGradient(
+                                    colors = listOf(
+                                        Color(0xFF1F2228),
+                                        Color(0xFF16181C),
+                                        Color(0xFF101215)
+                                    )
+                                )
+                            }
                         } else {
-                            Brush.verticalGradient(
-                                colors = listOf(
-                                    Color(0xFF4C525E),
-                                    Color(0xFF2E323A),
-                                    Color(0xFF22252C),
-                                    Color(0xFF181A1F)
+                            if (isSilverStyle) {
+                                Brush.verticalGradient(
+                                    colors = listOf(
+                                        Color(0xFFFFFFFF),
+                                        Color(0xFFE4E8F0),
+                                        Color(0xFFCBD2DE),
+                                        Color(0xFFAAB3C2)
+                                    )
                                 )
-                            )
+                            } else {
+                                Brush.verticalGradient(
+                                    colors = listOf(
+                                        Color(0xFF4C525E),
+                                        Color(0xFF2E323A),
+                                        Color(0xFF22252C),
+                                        Color(0xFF181A1F)
+                                    )
+                                )
+                            }
                         }
                     )
                     .border(
@@ -308,9 +347,17 @@ fun MechanicalKey(
                         brush = if (isRecordKey && isActive) {
                             Brush.verticalGradient(listOf(Color(0xFFFF5252), Color(0xFF900C14)))
                         } else if (isActive || isPressed) {
-                            Brush.verticalGradient(listOf(Color(0xFF3A3F49), Color(0xFF15181C)))
+                            if (isSilverStyle) {
+                                Brush.verticalGradient(listOf(Color(0xFFCBD2DE), Color(0xFF6B7484)))
+                            } else {
+                                Brush.verticalGradient(listOf(Color(0xFF3A3F49), Color(0xFF15181C)))
+                            }
                         } else {
-                            Brush.verticalGradient(listOf(Color(0xFF717A8A), Color(0xFF2C3038)))
+                            if (isSilverStyle) {
+                                Brush.verticalGradient(listOf(Color(0xFFFFFFFF), Color(0xFF7E8896)))
+                            } else {
+                                Brush.verticalGradient(listOf(Color(0xFF717A8A), Color(0xFF2C3038)))
+                            }
                         },
                         shape = RoundedCornerShape(3.5.dp)
                     )

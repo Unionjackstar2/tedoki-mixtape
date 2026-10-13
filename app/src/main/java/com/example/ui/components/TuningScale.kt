@@ -25,16 +25,24 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import com.example.ui.theme.AmberDialNeedle
 import com.example.ui.theme.AmberDisplayBackground
 import com.example.ui.theme.AmberScaleSub
 import com.example.ui.theme.AmberScaleText
+import com.example.util.HapticUtils
+import kotlin.math.roundToInt
 
 @Composable
 fun TuningScale(
     currentFrequencyMhz: Float,
     onFrequencyChange: (Float) -> Unit,
     isDimmed: Boolean = false,
+    isSilverStyle: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val minFreq = 88.0f
@@ -45,6 +53,20 @@ fun TuningScale(
         animationSpec = tween(durationMillis = 300),
         label = "scaleAlpha"
     )
+
+    val context = LocalContext.current
+    val view = LocalView.current
+    var lastDetentIndex by remember { mutableIntStateOf((currentFrequencyMhz * 10f).roundToInt()) }
+
+    fun updateFrequencyWithHaptics(newFreq: Float) {
+        val clamped = newFreq.coerceIn(minFreq, maxFreq)
+        val detent = (clamped * 10f).roundToInt()
+        if (detent != lastDetentIndex) {
+            lastDetentIndex = detent
+            HapticUtils.performSliderTick(context, view)
+        }
+        onFrequencyChange(clamped)
+    }
 
     Box(
         modifier = modifier
@@ -71,7 +93,18 @@ fun TuningScale(
             )
             .border(
                 1.5.dp,
-                if (isDimmed) Color(0xFF1C140A) else Color(0xFF5A3E1B),
+                if (isSilverStyle) {
+                    if (isDimmed) {
+                        Brush.verticalGradient(listOf(Color(0xFF8B95A5), Color(0xFF4A5568)))
+                    } else {
+                        Brush.verticalGradient(listOf(Color(0xFFFFFFFF), Color(0xFFC0CAD8), Color(0xFF788395)))
+                    }
+                } else {
+                    Brush.verticalGradient(
+                        if (isDimmed) listOf(Color(0xFF1C140A), Color(0xFF1C140A))
+                        else listOf(Color(0xFF5A3E1B), Color(0xFF33200B))
+                    )
+                },
                 RoundedCornerShape(6.dp)
             )
             .pointerInput(isDimmed) {
@@ -79,17 +112,25 @@ fun TuningScale(
                     detectTapGestures { offset ->
                         val fraction = (offset.x / size.width).coerceIn(0f, 1f)
                         val newFreq = minFreq + fraction * (maxFreq - minFreq)
-                        onFrequencyChange(newFreq)
+                        updateFrequencyWithHaptics(newFreq)
                     }
                 }
             }
             .pointerInput(isDimmed) {
                 if (!isDimmed) {
-                    detectDragGestures { change, _ ->
-                        val fraction = (change.position.x / size.width).coerceIn(0f, 1f)
-                        val newFreq = minFreq + fraction * (maxFreq - minFreq)
-                        onFrequencyChange(newFreq)
-                    }
+                    detectDragGestures(
+                        onDragStart = { offset ->
+                            val fraction = (offset.x / size.width).coerceIn(0f, 1f)
+                            val newFreq = minFreq + fraction * (maxFreq - minFreq)
+                            updateFrequencyWithHaptics(newFreq)
+                        },
+                        onDrag = { change, _ ->
+                            change.consume()
+                            val fraction = (change.position.x / size.width).coerceIn(0f, 1f)
+                            val newFreq = minFreq + fraction * (maxFreq - minFreq)
+                            updateFrequencyWithHaptics(newFreq)
+                        }
+                    )
                 }
             }
     ) {

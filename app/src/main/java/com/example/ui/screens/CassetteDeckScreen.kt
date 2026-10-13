@@ -3,12 +3,18 @@ package com.example.ui.screens
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import android.view.WindowManager
 import android.widget.Toast
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -20,6 +26,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -58,17 +65,22 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.audio.AudioEngine
 import com.example.data.FavoritesManager
+import com.example.data.FmDialMode
+import com.example.data.FrequencyTuningManager
 import com.example.model.Cassette
 import com.example.model.DeckState
 import com.example.model.PlaybackSource
+import com.example.model.RadioLayoutMode
 import com.example.model.RadioStation
 import com.example.model.RecordingMode
 import com.example.model.TrackMarker
@@ -80,6 +92,7 @@ import com.example.ui.components.FrequencySlider
 import com.example.ui.components.FunctionSelectorSwitch
 import com.example.ui.components.MechanicalTapeCounter
 import com.example.ui.components.RecordingOptionsSheet
+import com.example.ui.components.SettingsSheet
 import com.example.ui.components.TransportControls
 import com.example.ui.components.TuningScale
 import com.example.ui.components.VuMeterAndCounter
@@ -122,9 +135,29 @@ fun CassetteDeckScreen(
         mutableStateOf(prefs.getBoolean("pref_keep_screen_on", false))
     }
 
+    // Radio Layout Mode (Portrait Klassisches Deck vs Landscape Boombox)
+    val layoutPref = prefs.getString("pref_radio_layout_mode", RadioLayoutMode.PORTRAIT.name) ?: RadioLayoutMode.PORTRAIT.name
+    var radioLayoutMode by remember {
+        mutableStateOf(try { RadioLayoutMode.valueOf(layoutPref) } catch (e: Exception) { RadioLayoutMode.PORTRAIT })
+    }
+    val isSilverMode = radioLayoutMode == RadioLayoutMode.PORTRAIT_ALUMINUM
+
+    val activity = context.findActivity()
+    val configuration = LocalConfiguration.current
+    val isLandscapeDevice = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val shouldShowLandscape = radioLayoutMode == RadioLayoutMode.LANDSCAPE || radioLayoutMode == RadioLayoutMode.TRANSISTOR || isLandscapeDevice
+
+    // Keep screen orientation aligned with choice when layout mode is explicitly set
+    LaunchedEffect(radioLayoutMode) {
+        if (radioLayoutMode == RadioLayoutMode.LANDSCAPE || radioLayoutMode == RadioLayoutMode.TRANSISTOR) {
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        } else {
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
+    }
+
     // Apply or remove FLAG_KEEP_SCREEN_ON on current Activity Window
     DisposableEffect(isKeepScreenOn) {
-        val activity = context.findActivity()
         if (isKeepScreenOn) {
             activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         } else {
@@ -135,10 +168,91 @@ fun CassetteDeckScreen(
         }
     }
 
-    // Pool of selectable stations when radio is active: strictly favorites (limited to top 8 if setting enabled), fallback to curated
-    val activeStationPool = remember(favoriteStations, limitToTop8, stations) {
-        val favs = if (limitToTop8) favoriteStations.take(8) else favoriteStations
-        if (favs.isNotEmpty()) favs else stations
+    // Vollbildmodus (Immersive Mode: Statusleiste & Navigationsleiste ausblenden)
+    var isFullscreenEnabled by remember {
+        mutableStateOf(prefs.getBoolean("pref_fullscreen_enabled", false))
+    }
+
+    DisposableEffect(isFullscreenEnabled, activity) {
+        val window = activity?.window
+        if (window != null) {
+            val insetsController = WindowCompat.getInsetsController(window, window.decorView)
+            if (isFullscreenEnabled) {
+                insetsController.hide(WindowInsetsCompat.Type.systemBars())
+                insetsController.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            } else {
+                insetsController.show(WindowInsetsCompat.Type.systemBars())
+            }
+        }
+        onDispose {
+            val window = activity?.window
+            if (window != null) {
+                val insetsController = WindowCompat.getInsetsController(window, window.decorView)
+                insetsController.show(WindowInsetsCompat.Type.systemBars())
+            }
+        }
+    }
+
+    val frequencyTuningManager = remember { FrequencyTuningManager.getInstance(context) }
+    val fmDialMode by frequencyTuningManager.fmDialMode.collectAsState()
+    val locationMethod by frequencyTuningManager.locationMethod.collectAsState()
+    val activeBnetzaRegion by frequencyTuningManager.activeRegion.collectAsState()
+    val isFmMutingEnabled by frequencyTuningManager.isFmMutingEnabled.collectAsState()
+
+    // Pool of selectable stations when radio is active:
+    // Entweder echte BNetzA UKW-Sender vor Ort (GPS oder manuelle Stadt) oder gespeicherte Favoriten
+    val activeStationPool = remember(favoriteStations, limitToTop8, stations, fmDialMode, locationMethod, activeBnetzaRegion) {
+        if (fmDialMode == FmDialMode.LOCATION_BNETZA) {
+            frequencyTuningManager.getCurrentBnetzaStations()
+        } else {
+            val favs = if (limitToTop8) favoriteStations.take(8) else favoriteStations
+            if (favs.isNotEmpty()) favs else stations
+        }
+    }
+
+    // Dial frequency state
+    var tunedFrequency by remember { mutableFloatStateOf(currentStation?.dialFrequencyMhz ?: 101.5f) }
+
+    // Synchronize needle when currentStation changes
+    LaunchedEffect(currentStation) {
+        currentStation?.dialFrequencyMhz?.let { freq ->
+            tunedFrequency = freq
+        }
+    }
+
+    // Bei Auswahl des Transistor-Radios: Radio-Wiedergabe und Tuning initialisieren
+    LaunchedEffect(radioLayoutMode) {
+        if (radioLayoutMode == RadioLayoutMode.TRANSISTOR) {
+            if (playbackSource != PlaybackSource.RADIO) {
+                audioEngine.setPlaybackSource(PlaybackSource.RADIO)
+            }
+            val initialStation = currentStation ?: activeStationPool.firstOrNull() ?: AudioEngine.DEFAULT_STATION
+            if (!isRadioPlaying) {
+                audioEngine.playStation(initialStation)
+            }
+            audioEngine.updateTuningFrequency(tunedFrequency, activeStationPool, isFmMutingEnabled)
+        }
+    }
+
+    // Beim Wechsel von Modus (Favoriten vs. BNetzA), Standortmethode (GPS vs. Manuell) oder Region
+    // sicherstellen, dass sofort ein passender Sender aus dem neuen Pool eingestellt und die Skala synchronisiert wird!
+    LaunchedEffect(fmDialMode, locationMethod, activeBnetzaRegion) {
+        val pool = if (fmDialMode == FmDialMode.LOCATION_BNETZA) {
+            frequencyTuningManager.getCurrentBnetzaStations()
+        } else {
+            val favs = if (limitToTop8) favoriteStations.take(8) else favoriteStations
+            if (favs.isNotEmpty()) favs else stations
+        }
+
+        if (pool.isNotEmpty() && pool.none { it.stationuuid == currentStation?.stationuuid }) {
+            val first = pool.first()
+            tunedFrequency = first.dialFrequencyMhz
+            if (playbackSource == PlaybackSource.RADIO) {
+                audioEngine.playStation(first)
+            } else {
+                audioEngine.setStation(first)
+            }
+        }
     }
 
     // Persist recording automatically whenever a recording session cleanly finishes and finalizes
@@ -157,16 +271,8 @@ fun CassetteDeckScreen(
 
     var showRecordingOptions by remember { mutableStateOf(false) }
     var recordingMode by remember { mutableStateOf(RecordingMode.CONTINUOUS) }
-
-    // Dial frequency state
-    var tunedFrequency by remember { mutableFloatStateOf(currentStation?.dialFrequencyMhz ?: 101.5f) }
-
-    // Synchronize needle when currentStation changes
-    LaunchedEffect(currentStation) {
-        currentStation?.dialFrequencyMhz?.let { freq ->
-            tunedFrequency = freq
-        }
-    }
+    val isCueReviewActive by audioEngine.isCueReviewActive.collectAsState()
+    val isCueReviewAudioEnabled by audioEngine.cueReviewAudioEnabled.collectAsState()
 
     // Cassette ONLY spins during recording or during tape playback, or rewind/fast-forward!
     // When playing radio and NOT recording, the tape mechanism does not move.
@@ -199,17 +305,146 @@ fun CassetteDeckScreen(
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(DeckSurfaceDark)
-            .statusBarsPadding()
-            .navigationBarsPadding()
-            .draggable(
-                state = draggableState,
-                orientation = Orientation.Vertical
-            )
-    ) {
+    if (radioLayoutMode == RadioLayoutMode.TRANSISTOR) {
+        TransistorRadioView(
+            currentStation = currentStation,
+            tunedFrequency = tunedFrequency,
+            isCurrentStationFavorite = isCurrentStationFavorite,
+            isRadioPlaying = isRadioPlaying,
+            onFrequencyChange = { newFreq ->
+                tunedFrequency = newFreq
+                if (playbackSource != PlaybackSource.RADIO) {
+                    audioEngine.setPlaybackSource(PlaybackSource.RADIO)
+                }
+                audioEngine.updateTuningFrequency(newFreq, activeStationPool, isFmMutingEnabled)
+                val closest = activeStationPool.minByOrNull { kotlin.math.abs(it.dialFrequencyMhz - newFreq) }
+                closest?.let {
+                    val dist = kotlin.math.abs(it.dialFrequencyMhz - newFreq)
+                    if (dist <= 0.15f) {
+                        if (it.stationuuid != currentStation?.stationuuid || !isRadioPlaying) {
+                            audioEngine.playStation(it)
+                        }
+                    }
+                }
+            },
+            onPowerModeChange = { mode ->
+                when (mode) {
+                    com.example.ui.screens.TransistorBandPowerMode.OFF -> {
+                        audioEngine.setPlaybackSource(PlaybackSource.TAPE)
+                    }
+                    com.example.ui.screens.TransistorBandPowerMode.FM -> {
+                        audioEngine.setPlaybackSource(PlaybackSource.RADIO)
+                        val st = currentStation ?: activeStationPool.firstOrNull() ?: AudioEngine.DEFAULT_STATION
+                        audioEngine.playStation(st)
+                        audioEngine.updateTuningFrequency(tunedFrequency, activeStationPool, isFmMutingEnabled)
+                    }
+                    com.example.ui.screens.TransistorBandPowerMode.AM -> {
+                        audioEngine.setPlaybackSource(PlaybackSource.RADIO)
+                        // In AM mode without FM stations, tune to empty pool for static
+                        audioEngine.updateTuningFrequency(tunedFrequency, emptyList(), false)
+                    }
+                }
+            },
+            onToggleFavorite = {
+                currentStation?.let { st -> favoritesManager.toggleFavorite(st) }
+            },
+            onOpenStations = onOpenStations,
+            onOpenSettings = { showRecordingOptions = true }
+        )
+    } else if (shouldShowLandscape) {
+        LandscapeBoomboxView(
+            deckState = deckState,
+            playbackSource = playbackSource,
+            currentStation = currentStation,
+            activeTape = activeTape,
+            tapePositionSec = tapePositionSec,
+            isRadioPlaying = isRadioPlaying,
+            nowPlaying = nowPlaying,
+            vuLeft = vuLeft,
+            vuRight = vuRight,
+            counter = counter,
+            tunedFrequency = tunedFrequency,
+            isCurrentStationFavorite = isCurrentStationFavorite,
+            isSpinning = isSpinning,
+            isRewinding = isRewinding,
+            isFastForwarding = isFastForwarding,
+            isRecording = isRecording,
+            isEjected = isEjected,
+            isKeepScreenOn = isKeepScreenOn,
+            onToggleKeepScreenOn = {
+                val newState = !isKeepScreenOn
+                isKeepScreenOn = newState
+                prefs.edit().putBoolean("pref_keep_screen_on", newState).apply()
+                val msg = if (newState) "Display bleibt an" else "Automatisches Display-Timeout aktiv"
+                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+            },
+            onOpenStations = onOpenStations,
+            onOpenSettings = { showRecordingOptions = true },
+            onOpenShelf = onOpenShelf,
+            onOpenCustomizer = onOpenCustomizer,
+            onOpenDetail = onOpenDetail,
+            onFrequencyChange = { newFreq ->
+                tunedFrequency = newFreq
+                audioEngine.updateTuningFrequency(newFreq, activeStationPool, isFmMutingEnabled)
+                val closest = activeStationPool.minByOrNull { kotlin.math.abs(it.dialFrequencyMhz - newFreq) }
+                closest?.let {
+                    // Schalte den Sender ein/um, sobald die Nadel nah genug am Sender ist (< 0.15 MHz)
+                    if (kotlin.math.abs(it.dialFrequencyMhz - newFreq) <= 0.15f && it.stationuuid != currentStation?.stationuuid) {
+                        if (playbackSource == PlaybackSource.RADIO) {
+                            audioEngine.playStation(it)
+                        } else {
+                            audioEngine.setStation(it)
+                        }
+                    }
+                }
+            },
+            onToggleRadioPlayback = { audioEngine.toggleRadioPlayback() },
+            onToggleFavorite = {
+                currentStation?.let { st -> favoritesManager.toggleFavorite(st) }
+            },
+            onSourceChanged = { audioEngine.setPlaybackSource(it) },
+            onResetCounter = { audioEngine.resetCounter() },
+            onRecordPress = { audioEngine.onRecordPress() },
+            onPlayPress = { audioEngine.onPlayPress() },
+            onRewindPress = { audioEngine.onRewindPress() },
+            onFastForwardPress = { audioEngine.onFastForwardPress() },
+            onPausePress = { audioEngine.onPausePress() },
+            onStopEjectPress = { audioEngine.onStopEjectPress() },
+            onInsertTape = {
+                val tape = activeTape ?: Cassette(
+                    id = "tape_default",
+                    title = "Mein Mixtape",
+                    notes = "1LIVE",
+                    colorHex = "#212328"
+                )
+                audioEngine.insertTape(tape)
+            },
+            isCueReviewActive = isCueReviewActive
+        )
+    } else {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    if (isSilverMode) {
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color(0xFF1E222A),
+                                Color(0xFF14171E),
+                                Color(0xFF0D0F13)
+                            )
+                        )
+                    } else {
+                        Brush.verticalGradient(listOf(DeckSurfaceDark, DeckSurfaceDark))
+                    }
+                )
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .draggable(
+                    state = draggableState,
+                    orientation = Orientation.Vertical
+                )
+        ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -232,17 +467,29 @@ fun CassetteDeckScreen(
                         .clip(RoundedCornerShape(6.dp))
                         .background(
                             Brush.verticalGradient(
-                                colors = listOf(
-                                    Color(0xFF323844),
-                                    Color(0xFF20232A),
-                                    Color(0xFF14161B)
-                                )
+                                colors = if (isSilverMode) {
+                                    listOf(
+                                        Color(0xFFFFFFFF),
+                                        Color(0xFFE4E9F2),
+                                        Color(0xFFCAD2E0)
+                                    )
+                                } else {
+                                    listOf(
+                                        Color(0xFF323844),
+                                        Color(0xFF20232A),
+                                        Color(0xFF14161B)
+                                    )
+                                }
                             )
                         )
                         .border(
                             1.dp,
                             Brush.verticalGradient(
-                                colors = listOf(Color(0xFF6B768A), Color(0xFF242730))
+                                colors = if (isSilverMode) {
+                                    listOf(Color(0xFFFFFFFF), Color(0xFF8C97A8))
+                                } else {
+                                    listOf(Color(0xFF6B768A), Color(0xFF242730))
+                                }
                             ),
                             RoundedCornerShape(6.dp)
                         )
@@ -253,23 +500,27 @@ fun CassetteDeckScreen(
                             text = "Tedoki",
                             fontSize = 17.sp,
                             fontWeight = FontWeight.Black,
-                            color = Color(0xFFF1F5F9),
+                            color = if (isSilverMode) Color(0xFF1A1D24) else Color(0xFFF1F5F9),
                             letterSpacing = 1.sp
                         )
                         Spacer(modifier = Modifier.width(5.dp))
-                        // Recessed amber sub-badge
+                        // Recessed sub-badge
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(2.dp))
-                                .background(Color(0xFF241505))
-                                .border(0.5.dp, Color(0xFF664112), RoundedCornerShape(2.dp))
+                                .background(if (isSilverMode) Color(0xFF8B1D23) else Color(0xFF241505))
+                                .border(
+                                    0.5.dp,
+                                    if (isSilverMode) Color(0xFFC62828) else Color(0xFF664112),
+                                    RoundedCornerShape(2.dp)
+                                )
                                 .padding(horizontal = 4.dp, vertical = 1.dp)
                         ) {
                             Text(
                                 text = "MIXTAPE",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Black,
-                                color = Color(0xFFFFB300),
+                                color = if (isSilverMode) Color(0xFFFFFFFF) else Color(0xFFFFB300),
                                 letterSpacing = 2.sp
                             )
                         }
@@ -288,6 +539,8 @@ fun CassetteDeckScreen(
                                 Brush.radialGradient(
                                     colors = if (isKeepScreenOn) {
                                         listOf(Color(0xFF5A440D), Color(0xFF261D05))
+                                    } else if (isSilverMode) {
+                                        listOf(Color(0xFFFFFFFF), Color(0xFFDEE4EE), Color(0xFFB5BFD0))
                                     } else {
                                         listOf(Color(0xFF2E333C), Color(0xFF191B20))
                                     }
@@ -295,7 +548,7 @@ fun CassetteDeckScreen(
                             )
                             .border(
                                 1.dp,
-                                if (isKeepScreenOn) Color(0xFFFFB300) else Color(0xFF454C5A),
+                                if (isKeepScreenOn) Color(0xFFFFB300) else if (isSilverMode) Color(0xFF7E8A9C) else Color(0xFF454C5A),
                                 CircleShape
                             ),
                         contentAlignment = Alignment.Center
@@ -313,7 +566,7 @@ fun CassetteDeckScreen(
                             Icon(
                                 imageVector = Icons.Default.BrightnessHigh,
                                 contentDescription = if (isKeepScreenOn) "Display dauerhaft an (aktiviert)" else "Display dauerhaft an (deaktiviert)",
-                                tint = if (isKeepScreenOn) Color(0xFFFFC107) else Color(0xFF8B95A5),
+                                tint = if (isKeepScreenOn) Color(0xFFFFC107) else if (isSilverMode) Color(0xFF5A6474) else Color(0xFF8B95A5),
                                 modifier = Modifier.size(20.dp)
                             )
                         }
@@ -327,10 +580,14 @@ fun CassetteDeckScreen(
                             .clip(CircleShape)
                             .background(
                                 Brush.radialGradient(
-                                    colors = listOf(Color(0xFF2E333C), Color(0xFF191B20))
+                                    colors = if (isSilverMode) {
+                                        listOf(Color(0xFFFFFFFF), Color(0xFFDEE4EE), Color(0xFFB5BFD0))
+                                    } else {
+                                        listOf(Color(0xFF2E333C), Color(0xFF191B20))
+                                    }
                                 )
                             )
-                            .border(1.dp, Color(0xFF454C5A), CircleShape),
+                            .border(1.dp, if (isSilverMode) Color(0xFF7E8A9C) else Color(0xFF454C5A), CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         IconButton(
@@ -340,7 +597,7 @@ fun CassetteDeckScreen(
                             Icon(
                                 imageVector = Icons.Default.Radio,
                                 contentDescription = "Radiosender",
-                                tint = Color(0xFFCFD8DC),
+                                tint = if (isSilverMode) Color(0xFF263238) else Color(0xFFCFD8DC),
                                 modifier = Modifier.size(20.dp)
                             )
                         }
@@ -354,10 +611,14 @@ fun CassetteDeckScreen(
                             .clip(CircleShape)
                             .background(
                                 Brush.radialGradient(
-                                    colors = listOf(Color(0xFF2E333C), Color(0xFF191B20))
+                                    colors = if (isSilverMode) {
+                                        listOf(Color(0xFFFFFFFF), Color(0xFFDEE4EE), Color(0xFFB5BFD0))
+                                    } else {
+                                        listOf(Color(0xFF2E333C), Color(0xFF191B20))
+                                    }
                                 )
                             )
-                            .border(1.dp, Color(0xFF454C5A), CircleShape),
+                            .border(1.dp, if (isSilverMode) Color(0xFF7E8A9C) else Color(0xFF454C5A), CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         IconButton(
@@ -367,7 +628,7 @@ fun CassetteDeckScreen(
                             Icon(
                                 imageVector = Icons.Default.Settings,
                                 contentDescription = "Aufnahmeoptionen",
-                                tint = Color(0xFFCFD8DC),
+                                tint = if (isSilverMode) Color(0xFF263238) else Color(0xFFCFD8DC),
                                 modifier = Modifier.size(20.dp)
                             )
                         }
@@ -381,10 +642,14 @@ fun CassetteDeckScreen(
                             .clip(CircleShape)
                             .background(
                                 Brush.radialGradient(
-                                    colors = listOf(Color(0xFF382A12), Color(0xFF1E170A))
+                                    colors = if (isSilverMode) {
+                                        listOf(Color(0xFFFFFFFF), Color(0xFFDEE4EE), Color(0xFFBAC4D4))
+                                    } else {
+                                        listOf(Color(0xFF382A12), Color(0xFF1E170A))
+                                    }
                                 )
                             )
-                            .border(1.dp, Color(0xFF7A581F), CircleShape),
+                            .border(1.dp, if (isSilverMode) Color(0xFF7E8A9C) else Color(0xFF7A581F), CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         IconButton(
@@ -394,7 +659,7 @@ fun CassetteDeckScreen(
                             Icon(
                                 imageVector = Icons.Default.Archive,
                                 contentDescription = "Kassettensammlung",
-                                tint = Color(0xFFFFB300),
+                                tint = if (isSilverMode) Color(0xFFB45309) else Color(0xFFFFB300),
                                 modifier = Modifier.size(20.dp)
                             )
                         }
@@ -409,10 +674,14 @@ fun CassetteDeckScreen(
                             .clip(CircleShape)
                             .background(
                                 Brush.radialGradient(
-                                    colors = listOf(Color(0xFF2E333C), Color(0xFF191B20))
+                                    colors = if (isSilverMode) {
+                                        listOf(Color(0xFFFFFFFF), Color(0xFFDEE4EE), Color(0xFFB5BFD0))
+                                    } else {
+                                        listOf(Color(0xFF2E333C), Color(0xFF191B20))
+                                    }
                                 )
                             )
-                            .border(1.dp, Color(0xFF454C5A), CircleShape),
+                            .border(1.dp, if (isSilverMode) Color(0xFF7E8A9C) else Color(0xFF454C5A), CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
                             IconButton(
@@ -422,7 +691,7 @@ fun CassetteDeckScreen(
                                 Icon(
                                     imageVector = Icons.Default.Info,
                                     contentDescription = "Audiodatei-Informationen",
-                                    tint = Color(0xFFCFD8DC),
+                                    tint = if (isSilverMode) Color(0xFF263238) else Color(0xFFCFD8DC),
                                     modifier = Modifier.size(20.dp)
                                 )
                             }
@@ -431,30 +700,53 @@ fun CassetteDeckScreen(
                 }
             }
 
-            // Chassis Housing Frame (Dark Anthracite with high-depth brushed metal texture and bevels)
+            // Chassis Housing Frame (Dark Anthracite or Brushed Silver Aluminum)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .shadow(16.dp, RoundedCornerShape(12.dp))
+                    .shadow(if (isSilverMode) 20.dp else 16.dp, RoundedCornerShape(12.dp))
                     .clip(RoundedCornerShape(12.dp))
                     .background(
-                        Brush.verticalGradient(
-                            colors = listOf(
-                                Color(0xFF2F343E),
-                                DeckAnthracite,
-                                Color(0xFF101215)
+                        if (isSilverMode) {
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color(0xFFF6F8FB),
+                                    Color(0xFFE6EAF2),
+                                    Color(0xFFD6DCE6),
+                                    Color(0xFFCAD0DC),
+                                    Color(0xFFBCC3CF),
+                                    Color(0xFFE8ECF5)
+                                )
                             )
-                        )
+                        } else {
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color(0xFF2F343E),
+                                    DeckAnthracite,
+                                    Color(0xFF101215)
+                                )
+                            )
+                        }
                     )
                     .border(
                         2.dp,
-                        Brush.verticalGradient(
-                            colors = listOf(
-                                Color(0xFF6E788B),
-                                Color(0xFF333842),
-                                Color(0xFF1B1D22)
+                        if (isSilverMode) {
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color(0xFFFFFFFF),
+                                    Color(0xFFCBD3DF),
+                                    Color(0xFF8F9BAE)
+                                )
                             )
-                        ),
+                        } else {
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color(0xFF6E788B),
+                                    Color(0xFF333842),
+                                    Color(0xFF1B1D22)
+                                )
+                            )
+                        },
                         RoundedCornerShape(12.dp)
                     )
                     .padding(horizontal = 8.dp, vertical = 6.dp)
@@ -471,9 +763,74 @@ fun CassetteDeckScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        HiFiCornerScrew()
-                        HiFiCornerScrew()
+                        HiFiCornerScrew(isSilverStyle = isSilverMode)
+                        HiFiCornerScrew(isSilverStyle = isSilverMode)
                     }
+
+                    if (isSilverMode) {
+                        // Perforierte Aluminium-Lautsprecherblende (Hochformat)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(22.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(
+                                    Brush.verticalGradient(
+                                        colors = listOf(
+                                            Color(0xFFE4E9F2),
+                                            Color(0xFFD3DBE7),
+                                            Color(0xFFC4CBD7),
+                                            Color(0xFFBCC4D2)
+                                        )
+                                    )
+                                )
+                                .border(
+                                    0.8.dp,
+                                    Brush.verticalGradient(listOf(Color(0xFFFFFFFF), Color(0xFF8B95A5))),
+                                    RoundedCornerShape(4.dp)
+                                )
+                                .padding(horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "STEREO RECORDER",
+                                fontSize = 7.5.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color(0xFF374151),
+                                letterSpacing = 1.sp
+                            )
+                            // Perforierte Aluminium-Lautsprecherlöcher
+                            Canvas(
+                                modifier = Modifier
+                                    .width(130.dp)
+                                    .fillMaxHeight()
+                            ) {
+                                val holeR = 1.6.dp.toPx()
+                                val step = 4.2.dp.toPx()
+                                val cols = (size.width / step).toInt()
+                                val rows = (size.height / step).toInt().coerceAtLeast(1)
+                                for (r in 0 until rows) {
+                                    val y = 2.dp.toPx() + r * step
+                                    for (c in 0 until cols) {
+                                        val x = 2.dp.toPx() + c * step + if (r % 2 == 1) step * 0.5f else 0f
+                                        if (x < size.width - 2.dp.toPx()) {
+                                            drawCircle(color = Color(0xFFFFFFFF), radius = holeR + 0.5.dp.toPx(), center = Offset(x, y + 0.5.dp.toPx()))
+                                            drawCircle(color = Color(0xFF1E2229), radius = holeR, center = Offset(x, y))
+                                        }
+                                    }
+                                }
+                            }
+                            Text(
+                                text = "SOLID ALUMINUM",
+                                fontSize = 7.5.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color(0xFF374151),
+                                letterSpacing = 0.8.sp
+                            )
+                        }
+                    }
+
                     // 1. Authentic Cassette Bay Door with Acrylic Viewing Window (Kassettendeckel mit Sichtfenster)
                     val currentTape = activeTape ?: Cassette(
                         id = "tape_default",
@@ -489,6 +846,7 @@ fun CassetteDeckScreen(
                         isFastForwarding = isFastForwarding,
                         isRecording = isRecording,
                         isEjected = isEjected,
+                        isSilverStyle = isSilverMode,
                         tapePositionSec = tapePositionSec,
                         totalCapacitySec = currentTape.totalCapacitySec,
                         onLabelClick = {
@@ -501,7 +859,7 @@ fun CassetteDeckScreen(
                         }
                     )
 
-                    HiFiSectionDivider()
+                    HiFiSectionDivider(isSilverStyle = isSilverMode)
 
                     val isTapeMode = playbackSource == PlaybackSource.TAPE
                     val isTapeRunning = isSpinning && isTapeMode
@@ -511,10 +869,10 @@ fun CassetteDeckScreen(
                         currentFrequencyMhz = tunedFrequency,
                         onFrequencyChange = { newFreq ->
                             tunedFrequency = newFreq
-                            // Find closest station from active favorites pool
+                            audioEngine.updateTuningFrequency(newFreq, activeStationPool, isFmMutingEnabled)
                             val closest = activeStationPool.minByOrNull { kotlin.math.abs(it.dialFrequencyMhz - newFreq) }
                             closest?.let {
-                                if (it.stationuuid != currentStation?.stationuuid) {
+                                if (kotlin.math.abs(it.dialFrequencyMhz - newFreq) <= 0.15f && it.stationuuid != currentStation?.stationuuid) {
                                     if (playbackSource == PlaybackSource.RADIO) {
                                         audioEngine.playStation(it)
                                     } else {
@@ -523,7 +881,8 @@ fun CassetteDeckScreen(
                                 }
                             }
                         },
-                        isDimmed = isTapeMode
+                        isDimmed = isTapeMode,
+                        isSilverStyle = isSilverMode
                     )
 
                     // 2b. Tactile FM Frequency Slider (unter der Skala, mit metallischem Knopf & rotem Strich)
@@ -531,10 +890,10 @@ fun CassetteDeckScreen(
                         currentFrequencyMhz = tunedFrequency,
                         onFrequencyChange = { newFreq ->
                             tunedFrequency = newFreq
-                            // Gleiche bewährte Abstimm-Logik wie bei der Skala:
+                            audioEngine.updateTuningFrequency(newFreq, activeStationPool, isFmMutingEnabled)
                             val closest = activeStationPool.minByOrNull { kotlin.math.abs(it.dialFrequencyMhz - newFreq) }
                             closest?.let {
-                                if (it.stationuuid != currentStation?.stationuuid) {
+                                if (kotlin.math.abs(it.dialFrequencyMhz - newFreq) <= 0.15f && it.stationuuid != currentStation?.stationuuid) {
                                     if (playbackSource == PlaybackSource.RADIO) {
                                         audioEngine.playStation(it)
                                     } else {
@@ -543,10 +902,12 @@ fun CassetteDeckScreen(
                                 }
                             }
                         },
+                        isDimmed = isTapeMode,
+                        isSilverStyle = isSilverMode,
                         modifier = Modifier.padding(top = 2.dp)
                     )
 
-                    HiFiSectionDivider()
+                    HiFiSectionDivider(isSilverStyle = isSilverMode)
 
                     // 3. Digital Radio Panel (with Station in 14-Segment/Matrix, Now Playing, LEDs & Favorite Star)
                     DigitalRadioPanel(
@@ -557,6 +918,7 @@ fun CassetteDeckScreen(
                         isDimmed = isTapeMode,
                         isTapeRunning = isTapeRunning,
                         isRadioPlaying = isRadioPlaying,
+                        isSilverStyle = isSilverMode,
                         onToggleRadioPlayback = {
                             audioEngine.toggleRadioPlayback()
                         },
@@ -575,7 +937,7 @@ fun CassetteDeckScreen(
                         modifier = Modifier.padding(top = 2.dp)
                     )
 
-                    HiFiSectionDivider()
+                    HiFiSectionDivider(isSilverStyle = isSilverMode)
 
                     // 4. Source Switch (links neben dem Zähler), Tape Counter & Stereo VU-Meter
                     Row(
@@ -588,6 +950,7 @@ fun CassetteDeckScreen(
                         // Schalter links neben dem Zähler (kleiner & kompakt)
                         FunctionSelectorSwitch(
                             currentSource = playbackSource,
+                            isSilverStyle = isSilverMode,
                             onSourceChanged = { newSource ->
                                 audioEngine.setPlaybackSource(newSource)
                             }
@@ -599,12 +962,13 @@ fun CassetteDeckScreen(
                                 text = "COUNTER",
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF90A4AE),
+                                color = if (isSilverMode) Color(0xFF263238) else Color(0xFF90A4AE),
                                 letterSpacing = 0.5.sp,
                                 modifier = Modifier.padding(bottom = 2.dp)
                             )
                             MechanicalTapeCounter(
                                 value = counter,
+                                isSilverStyle = isSilverMode,
                                 onReset = { audioEngine.resetCounter() }
                             )
                         }
@@ -618,23 +982,26 @@ fun CassetteDeckScreen(
                                 text = "VU LEVEL",
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF90A4AE),
+                                color = if (isSilverMode) Color(0xFF263238) else Color(0xFF90A4AE),
                                 letterSpacing = 0.5.sp,
                                 modifier = Modifier.padding(bottom = 2.dp)
                             )
                             DualVuMeter(
                                 levelLeft = vuLeft,
                                 levelRight = vuRight,
+                                isSilverStyle = isSilverMode,
                                 modifier = Modifier.fillMaxWidth()
                             )
                         }
                     }
 
-                    HiFiSectionDivider()
+                    HiFiSectionDivider(isSilverStyle = isSilverMode)
 
                     // 5. Tactile Mechanical Transport Controls
                     TransportControls(
                         deckState = deckState,
+                        isSilverStyle = isSilverMode,
+                        isCueReviewActive = isCueReviewActive,
                         onRecordClick = {
                             audioEngine.onRecordPress()
                         },
@@ -663,15 +1030,15 @@ fun CassetteDeckScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        HiFiCornerScrew()
+                        HiFiCornerScrew(isSilverStyle = isSilverMode)
                         Text(
                             text = "HIGH FIDELITY COMPACT CASSETTE",
                             fontSize = 7.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF555D6B),
+                            color = if (isSilverMode) Color(0xFF4A5568) else Color(0xFF555D6B),
                             letterSpacing = 1.sp
                         )
-                        HiFiCornerScrew()
+                        HiFiCornerScrew(isSilverStyle = isSilverMode)
                     }
                 }
             }
@@ -693,14 +1060,41 @@ fun CassetteDeckScreen(
             }
         }
     }
+    }
 
-    // Recording Options Bottom Sheet
+    // Settings Bottom Sheet (Submenüs: "Radio auswählen", "Frequenzenstellung" & "MP3 Aufnahme")
     if (showRecordingOptions) {
-        RecordingOptionsSheet(
-            currentMode = recordingMode,
-            onModeSelect = {
+        SettingsSheet(
+            currentRecordingMode = recordingMode,
+            currentLayoutMode = radioLayoutMode,
+            frequencyTuningManager = frequencyTuningManager,
+            currentTunedStation = currentStation,
+            onTuneStation = { station ->
+                tunedFrequency = station.dialFrequencyMhz
+                if (playbackSource == PlaybackSource.RADIO) {
+                    audioEngine.playStation(station)
+                } else {
+                    audioEngine.setStation(station)
+                }
+            },
+            onRecordingModeSelect = {
                 recordingMode = it
-                showRecordingOptions = false
+            },
+            onRadioLayoutModeSelect = { newLayout ->
+                radioLayoutMode = newLayout
+                prefs.edit().putString("pref_radio_layout_mode", newLayout.name).apply()
+                if (newLayout == RadioLayoutMode.LANDSCAPE || newLayout == RadioLayoutMode.TRANSISTOR) {
+                    activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                } else {
+                    activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                }
+            },
+            isCueReviewAudioEnabled = isCueReviewAudioEnabled,
+            onCueReviewAudioEnabledChange = { audioEngine.setCueReviewAudioEnabled(it) },
+            isFullscreenEnabled = isFullscreenEnabled,
+            onFullscreenEnabledChange = { enabled ->
+                isFullscreenEnabled = enabled
+                prefs.edit().putBoolean("pref_fullscreen_enabled", enabled).apply()
             },
             onDismiss = { showRecordingOptions = false }
         )
@@ -708,7 +1102,10 @@ fun CassetteDeckScreen(
 }
 
 @Composable
-fun HiFiCornerScrew(modifier: Modifier = Modifier) {
+fun HiFiCornerScrew(
+    modifier: Modifier = Modifier,
+    isSilverStyle: Boolean = false
+) {
     Box(
         modifier = modifier
             .size(11.dp)
@@ -716,14 +1113,26 @@ fun HiFiCornerScrew(modifier: Modifier = Modifier) {
             .clip(CircleShape)
             .background(
                 Brush.radialGradient(
-                    colors = listOf(
-                        Color(0xFF9CA3AF),
-                        Color(0xFF4B5563),
-                        Color(0xFF1F242C)
-                    )
+                    colors = if (isSilverStyle) {
+                        listOf(
+                            Color(0xFFFFFFFF),
+                            Color(0xFFC4CBD7),
+                            Color(0xFF7A8699)
+                        )
+                    } else {
+                        listOf(
+                            Color(0xFF9CA3AF),
+                            Color(0xFF4B5563),
+                            Color(0xFF1F242C)
+                        )
+                    }
                 )
             )
-            .border(0.5.dp, Color(0xFF111317), CircleShape),
+            .border(
+                0.5.dp,
+                if (isSilverStyle) Color(0xFF6B7280) else Color(0xFF111317),
+                CircleShape
+            ),
         contentAlignment = Alignment.Center
     ) {
         // Machined screw slot
@@ -731,24 +1140,27 @@ fun HiFiCornerScrew(modifier: Modifier = Modifier) {
             modifier = Modifier
                 .width(6.5.dp)
                 .height(1.4.dp)
-                .background(Color(0xFF0B0C0E), RoundedCornerShape(0.5.dp))
+                .background(if (isSilverStyle) Color(0xFF2E3440) else Color(0xFF0B0C0E), RoundedCornerShape(0.5.dp))
         )
     }
 }
 
 @Composable
-fun HiFiSectionDivider(modifier: Modifier = Modifier) {
+fun HiFiSectionDivider(
+    modifier: Modifier = Modifier,
+    isSilverStyle: Boolean = false
+) {
     Column(
         modifier = modifier
             .fillMaxWidth()
             .padding(vertical = 1.dp)
     ) {
-        // Upper recessed shadow line
+        // Upper recessed groove
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(1.dp)
-                .background(Color(0xFF08090C))
+                .background(if (isSilverStyle) Color(0xFF9AA5B8) else Color(0xFF08090C))
         )
         // Lower metallic bevel highlight line
         Box(
@@ -757,11 +1169,19 @@ fun HiFiSectionDivider(modifier: Modifier = Modifier) {
                 .height(1.dp)
                 .background(
                     Brush.horizontalGradient(
-                        colors = listOf(
-                            Color(0x054B5563),
-                            Color(0x604B5563),
-                            Color(0x054B5563)
-                        )
+                        colors = if (isSilverStyle) {
+                            listOf(
+                                Color(0x10FFFFFF),
+                                Color(0xDDFFFFFF),
+                                Color(0x10FFFFFF)
+                            )
+                        } else {
+                            listOf(
+                                Color(0x054B5563),
+                                Color(0x604B5563),
+                                Color(0x054B5563)
+                            )
+                        }
                     )
                 )
         )
