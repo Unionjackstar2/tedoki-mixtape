@@ -145,11 +145,11 @@ fun CassetteDeckScreen(
     val activity = context.findActivity()
     val configuration = LocalConfiguration.current
     val isLandscapeDevice = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-    val shouldShowLandscape = radioLayoutMode == RadioLayoutMode.LANDSCAPE || radioLayoutMode == RadioLayoutMode.TRANSISTOR || isLandscapeDevice
+    val shouldShowLandscape = radioLayoutMode == RadioLayoutMode.LANDSCAPE || radioLayoutMode == RadioLayoutMode.TRANSISTOR || radioLayoutMode == RadioLayoutMode.TRANSISTOR_CREAM || isLandscapeDevice
 
     // Keep screen orientation aligned with choice when layout mode is explicitly set
     LaunchedEffect(radioLayoutMode) {
-        if (radioLayoutMode == RadioLayoutMode.LANDSCAPE || radioLayoutMode == RadioLayoutMode.TRANSISTOR) {
+        if (radioLayoutMode == RadioLayoutMode.LANDSCAPE || radioLayoutMode == RadioLayoutMode.TRANSISTOR || radioLayoutMode == RadioLayoutMode.TRANSISTOR_CREAM) {
             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         } else {
             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
@@ -220,9 +220,9 @@ fun CassetteDeckScreen(
         }
     }
 
-    // Bei Auswahl des Transistor-Radios: Radio-Wiedergabe und Tuning initialisieren
+    // Bei Auswahl der Transistor-Radios: Radio-Wiedergabe und Tuning initialisieren
     LaunchedEffect(radioLayoutMode) {
-        if (radioLayoutMode == RadioLayoutMode.TRANSISTOR) {
+        if (radioLayoutMode == RadioLayoutMode.TRANSISTOR || radioLayoutMode == RadioLayoutMode.TRANSISTOR_CREAM) {
             if (playbackSource != PlaybackSource.RADIO) {
                 audioEngine.setPlaybackSource(PlaybackSource.RADIO)
             }
@@ -305,7 +305,45 @@ fun CassetteDeckScreen(
         }
     }
 
-    if (radioLayoutMode == RadioLayoutMode.TRANSISTOR) {
+    if (radioLayoutMode == RadioLayoutMode.TRANSISTOR_CREAM) {
+        CreamTransistorRadioView(
+            currentStation = currentStation,
+            tunedFrequency = tunedFrequency,
+            isCurrentStationFavorite = isCurrentStationFavorite,
+            isRadioPlaying = isRadioPlaying,
+            onFrequencyChange = { newFreq ->
+                tunedFrequency = newFreq
+                if (playbackSource != PlaybackSource.RADIO) {
+                    audioEngine.setPlaybackSource(PlaybackSource.RADIO)
+                }
+                audioEngine.updateTuningFrequency(newFreq, activeStationPool, isFmMutingEnabled)
+                val closest = activeStationPool.minByOrNull { kotlin.math.abs(it.dialFrequencyMhz - newFreq) }
+                closest?.let {
+                    val dist = kotlin.math.abs(it.dialFrequencyMhz - newFreq)
+                    if (dist <= 0.15f) {
+                        if (it.stationuuid != currentStation?.stationuuid || !isRadioPlaying) {
+                            audioEngine.playStation(it)
+                        }
+                    }
+                }
+            },
+            onPowerSwitch = { isPowered ->
+                if (isPowered) {
+                    audioEngine.setPlaybackSource(PlaybackSource.RADIO)
+                    val st = currentStation ?: activeStationPool.firstOrNull() ?: AudioEngine.DEFAULT_STATION
+                    audioEngine.playStation(st)
+                    audioEngine.updateTuningFrequency(tunedFrequency, activeStationPool, isFmMutingEnabled)
+                } else {
+                    audioEngine.setPlaybackSource(PlaybackSource.TAPE)
+                }
+            },
+            onToggleFavorite = {
+                currentStation?.let { st -> favoritesManager.toggleFavorite(st) }
+            },
+            onOpenStations = onOpenStations,
+            onOpenSettings = { showRecordingOptions = true }
+        )
+    } else if (radioLayoutMode == RadioLayoutMode.TRANSISTOR) {
         TransistorRadioView(
             currentStation = currentStation,
             tunedFrequency = tunedFrequency,
@@ -1083,7 +1121,7 @@ fun CassetteDeckScreen(
             onRadioLayoutModeSelect = { newLayout ->
                 radioLayoutMode = newLayout
                 prefs.edit().putString("pref_radio_layout_mode", newLayout.name).apply()
-                if (newLayout == RadioLayoutMode.LANDSCAPE || newLayout == RadioLayoutMode.TRANSISTOR) {
+                if (newLayout == RadioLayoutMode.LANDSCAPE || newLayout == RadioLayoutMode.TRANSISTOR || newLayout == RadioLayoutMode.TRANSISTOR_CREAM) {
                     activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
                 } else {
                     activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT

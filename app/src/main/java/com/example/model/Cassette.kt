@@ -12,7 +12,8 @@ enum class RadioLayoutMode {
     PORTRAIT,           // Klassisches Kassettendeck (Hochformat - Anthrazit)
     PORTRAIT_ALUMINUM,  // Hi-Fi Kassettendeck (Silber gebürstetes Aluminium Hochformat)
     LANDSCAPE,          // Hi-Fi Radiorekorder / Ghettoblaster (Querformat)
-    TRANSISTOR          // Vintage Transistorradio (Querformat ohne Kassettendeck)
+    TRANSISTOR,         // Vintage Transistorradio (Querformat Leder/Chrom)
+    TRANSISTOR_CREAM    // Retro Transistorradio Cremeweiß mit Stoffbespannung (Querformat)
 }
 
 enum class PlaybackSource {

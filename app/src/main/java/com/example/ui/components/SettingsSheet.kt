@@ -738,6 +738,88 @@ fun RadioModelSelectionSubmenu(
                 lineHeight = 16.sp
             )
         }
+
+        // Option 5: Retro Transistorradio Cremeweiß (Querformat mit Stoffbespannung)
+        val isCreamTransistor = currentLayoutMode == RadioLayoutMode.TRANSISTOR_CREAM
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(if (isCreamTransistor) Color(0xFF242933) else Color(0xFF14161C))
+                .border(
+                    width = if (isCreamTransistor) 2.dp else 1.dp,
+                    color = if (isCreamTransistor) Color(0xFFFFB300) else Color(0xFF333A47),
+                    shape = RoundedCornerShape(12.dp)
+                )
+                .clickable { onSelect(RadioLayoutMode.TRANSISTOR_CREAM) }
+                .padding(14.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    RadioButton(
+                        selected = isCreamTransistor,
+                        onClick = { onSelect(RadioLayoutMode.TRANSISTOR_CREAM) },
+                        colors = RadioButtonDefaults.colors(selectedColor = Color(0xFFFFB300))
+                    )
+                    Column {
+                        Text(
+                            text = "Transistorradio Cremeweiß (Querformat)",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        Text(
+                            text = "Retro-Design mit edler Stoffbespannung",
+                            fontSize = 12.sp,
+                            color = Color(0xFF90A4AE)
+                        )
+                    }
+                }
+
+                if (isCreamTransistor) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color(0xFF3D2E0B))
+                            .border(1.dp, Color(0xFFFFB300), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        Text(
+                            text = "AKTIV",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFFFC107)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Realistic Preview Graphic for Cream Transistor Radio
+            CreamTransistorRadioPreviewGraphic(
+                isSelected = isCreamTransistor,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(110.dp)
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = "Exakt wie im Foto: Cremefarbenes Retro-Gehäuse mit sanften Kantenfasen, lederner Trageriemen, dahinterliegende Teleskopantenne, ON/OFF-Schiebeschalter mit Kontroll-LED, bernsteinfarbenes Skalenmodul mit Schieberegler, konzentrisch gebürstetes Aluminium-Volumerad (mit Hardwaretasten synchronisiert) und detailverliebter gewebter Akustikstoff über die gesamte Gehäusebreite.",
+                fontSize = 12.sp,
+                color = Color(0xFF90A4AE),
+                lineHeight = 16.sp
+            )
+        }
     }
 }
 
@@ -2139,3 +2221,188 @@ fun TransistorRadioPreviewGraphic(
         )
     }
 }
+
+/**
+ * Realistische Vorschaugrafik für das cremefarbene Retro-Transistorradio mit Stoffbespannung
+ */
+@Composable
+fun CreamTransistorRadioPreviewGraphic(
+    isSelected: Boolean,
+    modifier: Modifier = Modifier
+) {
+    Canvas(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color(0xFF0C0E12))
+            .border(1.dp, if (isSelected) Color(0xFFFFB300) else Color(0xFF2C323D), RoundedCornerShape(8.dp))
+            .padding(6.dp)
+    ) {
+        val w = size.width
+        val h = size.height
+
+        val boxWidth = (w - 12.dp.toPx()).coerceAtMost(h * 2.1f)
+        val boxLeft = (w - boxWidth) / 2
+        val boxTop = 8.dp.toPx()
+        val boxHeight = h - 14.dp.toPx()
+
+        // 1. Leather handle on top
+        drawRoundRect(
+            brush = Brush.verticalGradient(
+                colors = listOf(Color(0xFFC79A63), Color(0xFFA77B47), Color(0xFF865D2E))
+            ),
+            topLeft = Offset(boxLeft + 20.dp.toPx(), boxTop - 5.dp.toPx()),
+            size = Size(boxWidth - 40.dp.toPx(), 4.dp.toPx()),
+            cornerRadius = CornerRadius(1.5.dp.toPx(), 1.5.dp.toPx())
+        )
+
+        // 2. Cream rounded cabinet body
+        drawRoundRect(
+            brush = Brush.verticalGradient(
+                colors = listOf(Color(0xFFF7F2E7), Color(0xFFEBE2D0), Color(0xFFDDD2BE))
+            ),
+            topLeft = Offset(boxLeft, boxTop),
+            size = Size(boxWidth, boxHeight),
+            cornerRadius = CornerRadius(6.dp.toPx(), 6.dp.toPx())
+        )
+        drawRoundRect(
+            color = if (isSelected) Color(0xFFFFB300) else Color(0xFFDFD4C0),
+            topLeft = Offset(boxLeft, boxTop),
+            size = Size(boxWidth, boxHeight),
+            cornerRadius = CornerRadius(6.dp.toPx(), 6.dp.toPx()),
+            style = Stroke(width = 1.5.dp.toPx())
+        )
+
+        // 3. Top control section (~46% height)
+        val topH = (boxHeight - 6.dp.toPx()) * 0.46f
+        val innerLeft = boxLeft + 3.dp.toPx()
+        val innerTop = boxTop + 3.dp.toPx()
+        val innerW = boxWidth - 6.dp.toPx()
+
+        // Top panel background
+        drawRoundRect(
+            color = Color(0xFFECE4D2),
+            topLeft = Offset(innerLeft, innerTop),
+            size = Size(innerW, topH),
+            cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
+        )
+
+        // Left ON switch + amber LED
+        val switchW = 12.dp.toPx()
+        val switchH = topH * 0.75f
+        val switchLeft = innerLeft + 4.dp.toPx()
+        val switchTop = innerTop + (topH - switchH) / 2f
+        drawRoundRect(
+            color = Color(0xFF161513),
+            topLeft = Offset(switchLeft, switchTop),
+            size = Size(switchW, switchH),
+            cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
+        )
+        // Amber LED
+        drawCircle(
+            color = Color(0xFFFFB300),
+            radius = 1.8.dp.toPx(),
+            center = Offset(switchLeft + switchW / 2f, switchTop + 3.dp.toPx())
+        )
+        // Switch button
+        drawRoundRect(
+            color = Color(0xFFCBD2DF),
+            topLeft = Offset(switchLeft + 1.dp.toPx(), switchTop + 6.dp.toPx()),
+            size = Size(switchW - 2.dp.toPx(), switchH * 0.45f),
+            cornerRadius = CornerRadius(1.dp.toPx(), 1.dp.toPx())
+        )
+
+        // Center wide FM scale
+        val scaleLeft = switchLeft + switchW + 6.dp.toPx()
+        val knobW = 20.dp.toPx()
+        val scaleW = innerW - switchW - knobW - 16.dp.toPx()
+        val scaleGlassH = topH * 0.58f
+
+        drawRoundRect(
+            brush = Brush.verticalGradient(
+                colors = listOf(Color(0xFF2E1906), Color(0xFF4A2A0A), Color(0xFF2E1906))
+            ),
+            topLeft = Offset(scaleLeft, switchTop),
+            size = Size(scaleW, scaleGlassH),
+            cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
+        )
+        // Glowing red needle
+        val needleX = scaleLeft + scaleW * 0.55f
+        drawLine(
+            color = Color(0xFFFF2A00),
+            start = Offset(needleX, switchTop + 1.dp.toPx()),
+            end = Offset(needleX, switchTop + scaleGlassH - 1.dp.toPx()),
+            strokeWidth = 1.5.dp.toPx()
+        )
+
+        // Slider track below scale
+        val sliderTrackTop = switchTop + scaleGlassH + 2.dp.toPx()
+        val sliderTrackH = switchH - scaleGlassH - 2.dp.toPx()
+        drawRoundRect(
+            color = Color(0xFFD7CDB7),
+            topLeft = Offset(scaleLeft, sliderTrackTop),
+            size = Size(scaleW, sliderTrackH),
+            cornerRadius = CornerRadius(1.dp.toPx(), 1.dp.toPx())
+        )
+        // Chrome thumb with red center mark
+        drawRoundRect(
+            color = Color(0xFFE2E7F0),
+            topLeft = Offset(needleX - 3.dp.toPx(), sliderTrackTop),
+            size = Size(6.dp.toPx(), sliderTrackH),
+            cornerRadius = CornerRadius(1.dp.toPx(), 1.dp.toPx())
+        )
+        drawLine(
+            color = Color(0xFFFF1744),
+            start = Offset(needleX, sliderTrackTop),
+            end = Offset(needleX, sliderTrackTop + sliderTrackH),
+            strokeWidth = 1.dp.toPx()
+        )
+
+        // Right Volume Knob
+        val knobCenterX = innerLeft + innerW - knobW / 2f - 4.dp.toPx()
+        val knobCenterY = innerTop + topH / 2f
+        val knobR = knobW * 0.42f
+        drawCircle(
+            color = Color(0xFFCBD2DF),
+            radius = knobR,
+            center = Offset(knobCenterX, knobCenterY)
+        )
+        drawCircle(
+            color = Color(0xFFA5AFC0),
+            radius = knobR * 0.85f,
+            center = Offset(knobCenterX, knobCenterY)
+        )
+
+        // 4. Lower woven cloth speaker grille (~54% height across FULL width)
+        val clothTop = innerTop + topH + 1.5.dp.toPx()
+        val clothH = boxHeight - topH - 8.dp.toPx()
+
+        drawRoundRect(
+            brush = Brush.verticalGradient(
+                colors = listOf(Color(0xFFBA9E77), Color(0xFFA68B66), Color(0xFF967D5B))
+            ),
+            topLeft = Offset(innerLeft, clothTop),
+            size = Size(innerW, clothH),
+            cornerRadius = CornerRadius(3.dp.toPx(), 3.dp.toPx())
+        )
+
+        // Grid weaving threads
+        val threadStep = 3.5.dp.toPx()
+        val cCols = (innerW / threadStep).toInt()
+        val cRows = (clothH / threadStep).toInt()
+        for (cr in 0..cRows) {
+            val cy = clothTop + cr * threadStep
+            for (cc in 0..cCols) {
+                val cx = innerLeft + cc * threadStep
+                val isLight = (cr + cc) % 2 == 0
+                if (isLight) {
+                    drawCircle(
+                        color = Color(0xFFE2D4BF).copy(alpha = 0.7f),
+                        radius = 0.8.dp.toPx(),
+                        center = Offset(cx, cy)
+                    )
+                }
+            }
+        }
+    }
+}
+
