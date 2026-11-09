@@ -194,6 +194,18 @@ unterwegs geht es vom Datenvolumen ab.
 
 ---
 
+## Lizenz
+
+TEDOKI Mixtape ist **freie Software** unter der
+[GNU General Public License v3.0](LICENSE).
+Du darfst die App nutzen, weitergeben und verändern –
+veränderte Versionen müssen aber ebenfalls unter der GPL-3.0 stehen und ihren Quellcode offenlegen.
+
+Schriften, Senderdaten und Bibliotheken von Dritten haben eigene Lizenzen,
+siehe [NOTICE.md](NOTICE.md).
+
+---
+
 ## Für Entwickler
 
 Die APK wird automatisch mit GitHub Actions gebaut (Reiter **Actions** → letzter Lauf → **Artifacts**).
