@@ -25,8 +25,11 @@ jobs:
         with:
           gradle-version: '9.3.1'
 
-      - name: Android SDK einrichten
-        uses: android-actions/setup-android@v3
+      - name: Android-SDK-Lizenzen bestaetigen
+        run: |
+          SDKMANAGER=$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -n1)
+          echo "Verwende $SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses > /dev/null || true
 
       - name: Release-Schlüssel vorbereiten
         env:
