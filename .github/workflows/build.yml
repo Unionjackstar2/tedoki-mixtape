@@ -3,93 +3,96 @@ name: Build APK
 on:
   push:
     branches: [ main ]
+  pull_request:
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 40
+
+    env:
+      VERSION_CODE: ${{ github.run_number }}
+      VERSION_NAME: 0.5.${{ github.run_number }}
 
     steps:
-      - name: Code holen
+      - name: Code auschecken
         uses: actions/checkout@v4
 
-      # Findet den Ordner mit settings.gradle.kts – auch wenn das Projekt
-      # versehentlich in einem Unterordner gelandet ist.
-      - name: Projektordner finden
+      # Findet den Projektordner automatisch – egal ob die Gradle-Dateien im Repo-Hauptordner
+      # oder in einem Unterordner (z. B. tedoki-kids-launcher-2-main/) liegen
+      - name: Projektordner suchen
         run: |
-          echo "Inhalt des Repos:"; ls -la
-          SETTINGS=$(find . -maxdepth 3 -name settings.gradle.kts -not -path "*/node_modules/*" | head -n1)
+          SETTINGS=$(find . -maxdepth 3 -name "settings.gradle.kts" -not -path "*/node_modules/*" | head -n 1)
           if [ -z "$SETTINGS" ]; then
-            echo "::error::Keine settings.gradle.kts im Repo gefunden – wurden alle Dateien hochgeladen?"
+            echo "::error::Keine settings.gradle.kts im Repo gefunden – wurden die Gradle-Dateien hochgeladen?"
+            echo "Inhalt des Repos:"; find . -maxdepth 2 -not -path "./.git*" | sort
             exit 1
           fi
           PROJECT_DIR=$(dirname "$SETTINGS")
           echo "Projektordner: $PROJECT_DIR"
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
 
-      - name: Java 17 einrichten
+      - name: Secrets prüfen
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: |
+          [ -n "$KEYSTORE_BASE64" ]   && echo "KEYSTORE_BASE64: vorhanden"   || echo "::warning::KEYSTORE_BASE64 fehlt"
+          [ -n "$KEYSTORE_PASSWORD" ] && echo "KEYSTORE_PASSWORD: vorhanden" || echo "::error::KEYSTORE_PASSWORD fehlt oder ist leer"
+          if [ -n "$KEYSTORE_BASE64" ] && [ -z "$KEYSTORE_PASSWORD" ]; then exit 1; fi
+
+      - name: JDK 17 einrichten
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
+      - name: Android SDK einrichten
+        uses: android-actions/setup-android@v3
+
+      # Im Repo liegt kein Gradle-Wrapper – Gradle wird hier passend zu AGP 9.1 installiert
       - name: Gradle einrichten
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.3.1'
 
-      # Das Android SDK ist auf den GitHub-Runnern schon vorinstalliert.
-      # Fehlende Teile (z. B. Plattform 36.1) laedt Gradle beim Build selbst nach.
-      - name: Android-SDK-Lizenzen bestaetigen
-        run: |
-          SDKMANAGER=$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -n1)
-          echo "Verwende $SDKMANAGER"
-          yes | "$SDKMANAGER" --licenses > /dev/null || true
-
-      - name: Release-Schlüssel vorbereiten
+      - name: Release-Keystore aus Secret wiederherstellen
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
+            echo "KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+            echo "Release-Keystore gefunden."
+          else
+            echo "::warning::Kein KEYSTORE_BASE64-Secret – APK wird mit Debug-Schlüssel signiert."
+          fi
+
+      - name: Release-APK bauen
+        env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: |
-          if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "::warning::Kein KEYSTORE_BASE64-Secret – APK wird mit Debug-Schlüssel signiert."
-            exit 0
-          fi
-          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
-          # Alias automatisch ermitteln, falls kein KEY_ALIAS-Secret gesetzt ist
-          if [ -z "$KEY_ALIAS" ]; then
-            KEY_ALIAS=$(keytool -list -keystore "$RUNNER_TEMP/release.jks" -storepass "$KEYSTORE_PASSWORD" 2>/dev/null \
-              | grep -iE "PrivateKeyEntry" | head -n1 | cut -d',' -f1)
-          fi
-          if [ -z "$KEY_ALIAS" ]; then
-            echo "::error::Konnte den Schlüssel-Alias nicht lesen – Passwort prüfen oder KEY_ALIAS-Secret anlegen."
-            exit 1
-          fi
-          {
-            echo "KEYSTORE_FILE=$RUNNER_TEMP/release.jks"
-            echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
-            echo "KEY_ALIAS=$KEY_ALIAS"
-            echo "KEY_PASSWORD=${KEY_PASSWORD:-$KEYSTORE_PASSWORD}"
-          } >> "$GITHUB_ENV"
-          echo "Schlüssel-Alias: $KEY_ALIAS"
-
-      - name: APK bauen
-        env:
-          BUILD_NUMBER: ${{ github.run_number }}
-        run: gradle -p "$PROJECT_DIR" :app:assembleRelease --no-configuration-cache --stacktrace
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: gradle --no-daemon --stacktrace :app:assembleRelease
 
       - name: APK umbenennen
         run: |
           mkdir -p out
-          cp "$PROJECT_DIR"/app/build/outputs/apk/release/*.apk "out/TEDOKI-Mixtape-1.0-build${{ github.run_number }}.apk"
+          cp "$PROJECT_DIR"/app/build/outputs/apk/release/*.apk "out/TEDOKI-kids-${VERSION_NAME}.apk"
           ls -la out
 
       - name: APK hochladen
         uses: actions/upload-artifact@v4
         with:
-          name: TEDOKI-Mixtape-build${{ github.run_number }}
+          name: TEDOKI-kids-${{ env.VERSION_NAME }}
           path: out/*.apk
-          if-no-files-found: error
+          retention-days: 30
