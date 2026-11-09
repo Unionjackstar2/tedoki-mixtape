@@ -5,6 +5,10 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+# Noetig, damit der Build einen GitHub-Release mit der APK anlegen darf
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -108,3 +112,12 @@ jobs:
           name: TEDOKI-Mixtape-build${{ github.run_number }}
           path: out/*.apk
           if-no-files-found: error
+
+      - name: Release mit APK veröffentlichen
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0-build${{ github.run_number }}
+          name: TEDOKI Mixtape 1.0 (Build ${{ github.run_number }})
+          body: Automatisch gebaut aus Commit ${{ github.sha }}.
+          files: out/*.apk
+          make_latest: true
