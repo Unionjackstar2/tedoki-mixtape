@@ -14,6 +14,20 @@ jobs:
       - name: Code holen
         uses: actions/checkout@v4
 
+      # Findet den Ordner mit settings.gradle.kts – auch wenn das Projekt
+      # versehentlich in einem Unterordner gelandet ist.
+      - name: Projektordner finden
+        run: |
+          echo "Inhalt des Repos:"; ls -la
+          SETTINGS=$(find . -maxdepth 3 -name settings.gradle.kts -not -path "*/node_modules/*" | head -n1)
+          if [ -z "$SETTINGS" ]; then
+            echo "::error::Keine settings.gradle.kts im Repo gefunden – wurden alle Dateien hochgeladen?"
+            exit 1
+          fi
+          PROJECT_DIR=$(dirname "$SETTINGS")
+          echo "Projektordner: $PROJECT_DIR"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
       - name: Java 17 einrichten
         uses: actions/setup-java@v4
         with:
@@ -25,6 +39,8 @@ jobs:
         with:
           gradle-version: '9.3.1'
 
+      # Das Android SDK ist auf den GitHub-Runnern schon vorinstalliert.
+      # Fehlende Teile (z. B. Plattform 36.1) laedt Gradle beim Build selbst nach.
       - name: Android-SDK-Lizenzen bestaetigen
         run: |
           SDKMANAGER=$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin/sdkmanager | sort -V | tail -n1)
@@ -63,12 +79,12 @@ jobs:
       - name: APK bauen
         env:
           BUILD_NUMBER: ${{ github.run_number }}
-        run: gradle :app:assembleRelease --no-configuration-cache --stacktrace
+        run: gradle -p "$PROJECT_DIR" :app:assembleRelease --no-configuration-cache --stacktrace
 
       - name: APK umbenennen
         run: |
           mkdir -p out
-          cp app/build/outputs/apk/release/*.apk "out/TEDOKI-Mixtape-1.0-build${{ github.run_number }}.apk"
+          cp "$PROJECT_DIR"/app/build/outputs/apk/release/*.apk "out/TEDOKI-Mixtape-1.0-build${{ github.run_number }}.apk"
           ls -la out
 
       - name: APK hochladen
